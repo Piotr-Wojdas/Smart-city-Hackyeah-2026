@@ -7,6 +7,12 @@ description: Powódź w Stroniu Śląskim – awaria sieci komórkowej, ewakuacj
 map:
   kind: osm
   dir: stronie-slaskie
+  osm:
+    name: "Stronie Śląskie"
+    center: [50.2957, 16.8742]  # szerokość, długość geograficzna
+    dist_m: 1800
+    network: walk
+    zone_buffer_m: 120
   grid:
     seed: 7
     nx: 22

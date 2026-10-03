@@ -15,3 +15,6 @@ results/
 .claude/settings.local.json
 .env
 .env.*
+
+# pamięć podręczna zapytań osmnx
+cache/

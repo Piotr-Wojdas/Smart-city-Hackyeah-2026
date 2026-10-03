@@ -1,4 +1,4 @@
-"""Interfejs wiersza poleceń: `sztafeta run | animate | frame | charts | inspect`."""
+"""Interfejs wiersza poleceń: `sztafeta fetch-osm | run | animate | frame | charts | inspect`."""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from typing import Annotated
 import typer
 
 from sztafeta.runner import build, run_once
-from sztafeta.scenarios import list_presets
+from sztafeta.scenarios import list_presets, read_preset
 
 app = typer.Typer(
     add_completion=False,
@@ -188,3 +188,46 @@ def inspect(
         typer.echo(f"Błąd: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(json.dumps(view, ensure_ascii=False, indent=2))
+
+
+@app.command("fetch-osm")
+def fetch_osm(
+    preset: Annotated[str, typer.Option(help="Preset z sekcją map.osm.")] = "flood-stronie",
+    data_dir: Annotated[Path, typer.Option(help="Katalog na dane map.")] = Path("data"),
+) -> None:
+    """Pobiera ulice, budynki i rzeki z OpenStreetMap i zapisuje mapę do data/<miejsce>/ (wymaga sieci)."""
+    from sztafeta.data.osm import OsmRequest, fetch_city
+    from sztafeta.data.store import save_city
+
+    try:
+        cfg = read_preset(preset).get("map", {})
+        osm = cfg["osm"]
+        request = OsmRequest(
+            name=str(osm["name"]),
+            lat=float(osm["center"][0]),
+            lon=float(osm["center"][1]),
+            dist_m=float(osm.get("dist_m", 1800.0)),
+            network=str(osm.get("network", "walk")),
+            zone_buffer_m=float(osm.get("zone_buffer_m", 120.0)),
+        )
+    except (FileNotFoundError, KeyError, ValueError) as exc:
+        typer.echo(f"Błąd: preset „{preset}” nie ma poprawnej sekcji map.osm ({exc})", err=True)
+        raise typer.Exit(code=2) from exc
+    target = data_dir / str(cfg["dir"])
+    typer.echo(f"Pobieram {request.name} z OpenStreetMap (promień {request.dist_m:.0f} m)...")
+    try:
+        city, meta = fetch_city(request)
+    except ImportError as exc:
+        typer.echo("Błąd: brak pakietu osmnx. Zainstaluj grupę zależności: uv sync --group osm", err=True)
+        raise typer.Exit(code=2) from exc
+    except Exception as exc:
+        typer.echo(f"Błąd pobierania danych OSM: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    save_city(city, target, meta)
+    typer.echo(
+        f"Zapisano {target}: {meta['nodes']} węzłów, {meta['street_km']} km ulic, "
+        f"{meta['residential_buildings']} budynków mieszkalnych "
+        f"({meta['buildings_in_zone']} w strefie zagrożenia)."
+    )
+    typer.echo(f"Hub: {meta['hub_note']}. Punkt ewakuacji: {meta['evac_note']}.")
+    typer.echo("Dane: © autorzy OpenStreetMap, licencja ODbL.")

@@ -136,7 +136,7 @@ class MapAnimation:
         m = self.run.static["map"]
         ax.set_axis_off()
         box_ratio = (_MAP_BOX[2] * 16.0) / (_MAP_BOX[3] * 9.0)
-        x0, x1, y0, y1 = _map_limits(m["bbox"], box_ratio)
+        x0, x1, y0, y1 = _map_limits(self._view_bbox(), box_ratio)
         ax.set_xlim(x0, x1)
         ax.set_ylim(y0, y1)
         ax.set_aspect("equal")
@@ -165,8 +165,7 @@ class MapAnimation:
         streets = np.asarray(m["streets"], dtype=np.float64).reshape(-1, 2, 2)
         ax.add_collection(LineCollection(list(streets), colors=style.STREET, linewidths=1.3, zorder=2))
 
-        inside = zone[(zone[:, 0] > x0) & (zone[:, 0] < x1) & (zone[:, 1] > y0) & (zone[:, 1] < y1)]
-        anchor = inside[np.argmax(inside[:, 1])] if inside.size else zone[np.argmax(zone[:, 1])]
+        anchor = self._zone_anchor(zone, (x0, x1, y0, y1))
         self._label(float(anchor[0]), float(anchor[1]), tr(self.lang, "zone"), style.HAZARD_EDGE, dy=10)
 
         for marker in style.STATE_MARKERS:
@@ -207,6 +206,34 @@ class MapAnimation:
         self.fig.text(_MAP_BOX[0] + 0.004, 0.030, tr(self.lang, "model_note"), fontsize=12, color=style.INK2)
         source = textwrap.shorten(tr(self.lang, "map_note", source=m["source"]), width=150, placeholder="…")
         self.fig.text(_MAP_BOX[0] + 0.004, 0.009, source, fontsize=10, color=style.MUTED)
+
+    def _view_bbox(self) -> list[float]:
+        """Kadr mapy: zasięg domów mieszkańców (bez pojedynczych odległych) z hubem i punktem ewakuacji."""
+        static = self.run.static
+        m = static["map"]
+        hx = np.asarray(static["agents"]["home_x"], dtype=np.float64)[self._resident]
+        hy = np.asarray(static["agents"]["home_y"], dtype=np.float64)[self._resident]
+        xs = np.concatenate([np.quantile(hx, [0.005, 0.995]), [m["hub"]["x"], m["evac_point"]["x"]]])
+        ys = np.concatenate([np.quantile(hy, [0.005, 0.995]), [m["hub"]["y"], m["evac_point"]["y"]]])
+        pad = 60.0
+        return [float(xs.min()) - pad, float(ys.min()) - pad, float(xs.max()) + pad, float(ys.max()) + pad]
+
+    def _zone_anchor(
+        self, zone: NDArray[np.float64], view: tuple[float, float, float, float]
+    ) -> NDArray[np.float64]:
+        """Wierzchołek strefy na podpis: w kadrze, z dala od krawędzi oraz od huba i punktu ewakuacji."""
+        x0, x1, y0, y1 = view
+        m = self.run.static["map"]
+        mx = 0.12 * (x1 - x0)
+        my = 0.12 * (y1 - y0)
+        ok = (zone[:, 0] > x0 + mx) & (zone[:, 0] < x1 - mx) & (zone[:, 1] > y0 + my) & (zone[:, 1] < y1 - my)
+        cand = zone[ok] if ok.any() else zone
+        sites = np.array([[m["hub"]["x"], m["hub"]["y"]], [m["evac_point"]["x"], m["evac_point"]["y"]]])
+        dist = np.hypot(cand[:, None, 0] - sites[None, :, 0], cand[:, None, 1] - sites[None, :, 1]).min(
+            axis=1
+        )
+        best: NDArray[np.float64] = cand[int(np.argmax(dist))]
+        return best
 
     def _role_scatter(self, marker: style.Marker, zorder: float) -> PathCollection:
         return self.ax.scatter(

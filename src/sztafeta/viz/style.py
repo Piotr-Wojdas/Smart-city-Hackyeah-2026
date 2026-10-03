@@ -19,6 +19,7 @@ MUTED = "#898781"
 GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 STREET = "#d2d1c9"
+NO_APP = "#b3b2a8"
 WATER = "#9ec5f4"
 
 BLUE = "#2a78d6"
@@ -44,7 +45,7 @@ class Marker:
 
 # indeks = AgentState: NO_APP, UNINFORMED, INFORMED, EVACUATING, SAFE, NEED_HELP
 STATE_MARKERS: tuple[Marker, ...] = (
-    Marker(".", 14.0, AXIS, "none", 0.0),
+    Marker(".", 22.0, NO_APP, "none", 0.0),
     Marker("o", 16.0, SURFACE, MUTED, 1.0),
     Marker("o", 20.0, BLUE, "none", 0.0),
     Marker("^", 34.0, YELLOW, INK, 0.5),

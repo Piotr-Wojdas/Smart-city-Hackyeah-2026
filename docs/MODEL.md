@@ -26,9 +26,20 @@ i można go nadpisać z linii poleceń: `sztafeta run --set radio.range_m=80`.
 - **Dane OSM** (preset `flood-stronie`): sieć ulic i budynki mieszkalne z OpenStreetMap, rzutowane do
   EPSG:2180. Krawędzie grafu są odcinkami prostymi (geometria ulic rozbita na węzły pośrednie).
   Graf traktujemy jako nieskierowany: piesi i służby poruszają się w obu kierunkach.
+  Stronie Śląskie: promień 1800 m od środka miasta, sieć piesza (`network: walk`), 4729 węzłów,
+  99 km ulic i ścieżek, 1025 budynków mieszkalnych (258 w strefie zagrożenia). Szczegóły pobrania:
+  `data/stronie-slaskie/meta.json`.
+- **Budynki mieszkalne**: wszystkie budynki z OSM o powierzchni co najmniej 40 m², z wyłączeniem typów
+  na pewno niemieszkalnych (garaże, kościoły, szkoły, hale itp.). Waga budynku = powierzchnia × liczba
+  kondygnacji (z tagu `building:levels`; gdy go brak: bloki 4, pozostałe 1,5–3 zależnie od powierzchni).
+  Budynki oznaczone w OSM ogólnie (`building=yes`) traktujemy jako mieszkalne – to zawyża rozrzut
+  mieszkańców po zabudowie gospodarczej (założenie zespołu).
 - **Siatka proceduralna** (fallback i testy): nieregularna siatka ulic z „rzeką” przez środek.
   Nie odwzorowuje żadnego rzeczywistego miasta.
-- **Strefa zagrożenia**: wielokąt wzdłuż rzeki (bufor). To nie jest mapa zalewowa ISOK.
+- **Strefa zagrożenia**: wielokąt wzdłuż rzeki (bufor 120 m wokół rzek z OSM, `waterway=river`).
+  To nie jest mapa zalewowa ISOK.
+- **Hub**: położenie urzędu (`amenity=townhall`) z OSM. **Punkt ewakuacji**: szkoła z OSM leżąca
+  poza strefą zagrożenia. Wybór jest umowny i nie odtwarza rzeczywistej organizacji ewakuacji.
 - **Hub i punkt ewakuacji** muszą leżeć poza strefą zagrożenia (sprawdzane przy budowie mapy).
 - Ruch odbywa się wyłącznie po grafie ulic; nie modelujemy zalanych, nieprzejezdnych odcinków.
 
@@ -36,7 +47,7 @@ i można go nadpisać z linii poleceń: `sztafeta run --set radio.range_m=80`.
 
 | Parametr | Wartość | Uzasadnienie | Źródło |
 |---|---|---|---|
-| `population.n_residents` | 3000 | mniej niż liczba mieszkańców miasta, więc gęstość telefonów jest zaniżona (konserwatywnie); mieści się w limicie czasu obliczeń | założenie zespołu |
+| `population.n_residents` | 3000 | ok. 60% liczby mieszkańców miasta (4956 osób, GUS, stan na 31.12.2024), więc gęstość telefonów jest zaniżona (konserwatywnie); mieści się w limicie czasu obliczeń | założenie zespołu; liczba ludności: GUS za polskawliczbach.pl |
 | `behavior.household_mean` | 2,5 osoby | rząd wielkości średniego gospodarstwa domowego w Polsce | GUS, NSP 2021 (ok. 2,5–2,6) |
 | `behavior.adoption` | 30% | odsetek mieszkańców z zainstalowanym modułem; kluczowa niewiadoma, dlatego przegląd 10–70% | założenie zespołu |
 | `behavior.lang_shares` | PL 90%, UK 5%, EN 2%, DE 2%, CS 1% | język telefonu; region przygraniczny i turystyczny | założenie zespołu |
