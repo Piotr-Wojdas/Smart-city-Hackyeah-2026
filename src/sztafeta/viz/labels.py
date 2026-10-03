@@ -16,22 +16,13 @@ _PL: dict[str, str] = {
     "tile_alert_value": "{pct:.0f}% telefonów z aplikacją",
     "tile_evac": "Ewakuowani ze strefy zagrożenia",
     "tile_evac_value": "{pct:.0f}% mieszkańców strefy",
-    "tile_reports": "Zgłoszenia w PCZK",
-    "tile_reports_value": "{delivered} z {created}",
-    "tile_reports_sub": "„potrzebuję pomocy”: {need_delivered} z {need_created} zgłoszeń",
-    "tile_acks_value": "potwierdzenie wróciło do: {n}",
     "story": "Co się dzieje",
     "ev_network_down": "Awaria sieci komórkowej",
     "ev_alert_issued": "PCZK wydaje podpisany alert",
-    "ev_alert_relay": "Alert idzie od telefonu do telefonu",
+    "ev_alert_relay": "Telefony przekazują sobie alert",
     "ev_reach_50": "Połowa telefonów ma już alert",
     "ev_reach_90": "90% telefonów ma już alert",
     "ev_couriers": "Kurierzy wyruszają w teren",
-    "ev_report": "Mieszkańcy wysyłają zgłoszenia",
-    "ev_pickup": "Kurier zbiera zgłoszenia",
-    "ev_delivered": "Kurier oddaje w PCZK {n} zgłoszeń",
-    "ev_ack": "Potwierdzenia wracają do ludzi",
-    "ev_alert_update": "Nowa wersja alertu zastępuje starą",
     "run_note": (
         "Jedno uruchomienie: {scenario}, seed {seed}, {residents} mieszkańców, adopcja "
         "{adoption}%, zasięg {range_m} m, kurierów: {couriers}. Rozrzut między seedami: "
@@ -129,8 +120,6 @@ _PL: dict[str, str] = {
     "couriers_title_1h": (
         "Po 1 h w PCZK jest {few_pct} zgłoszeń przy {few} kurierach i {many_pct} przy {many}"
     ),
-    "ev_delivered_first": "Pierwsze zgłoszenie w PCZK",
-    "ev_summary": "Bilans: {reach:.0f}% z alertem, {delivered}/{created} zgłoszeń",
     "evac_sub_vs": (
         "Wszyscy mieszkańcy strefy. Wariant bazowy nie obejmuje syren ani służb: to dolna "
         "granica, nie prognoza."
@@ -151,11 +140,12 @@ _PL: dict[str, str] = {
     "leg_handover": "przekazanie alertu",
     "leg_ring": "właśnie odebrał alert",
     "leg_evac": "ewakuuje się",
-    "leg_need": "zgłosił potrzebę pomocy",
     "leg_courier": "kurier (ratownik)",
-    "leg_pickup": "kurier odbiera zgłoszenie",
     "closeup_caption": "ZBLIŻENIE · przerywana linia: telefony się łączą · niebieska: alert przekazany",
     "scale_range": "{m} m: zasięg radia",
+    "ev_evac_start": "Strefa zaczyna się ewakuować",
+    "ev_evac_half": "Połowa strefy jest bezpieczna",
+    "ev_end": "Ewakuowano {pct:.0f}% mieszkańców strefy",
     "hours": "h",
     "minutes": "min",
 }
@@ -174,22 +164,13 @@ _EN: dict[str, str] = {
     "tile_alert_value": "{pct:.0f}% of phones with the app",
     "tile_evac": "Evacuated from the hazard zone",
     "tile_evac_value": "{pct:.0f}% of zone residents",
-    "tile_reports": "Reports at the crisis centre",
-    "tile_reports_value": "{delivered} of {created}",
-    "tile_reports_sub": "“need help”: {need_delivered} of {need_created} reports",
-    "tile_acks_value": "acknowledgement returned to: {n}",
     "story": "What is happening",
     "ev_network_down": "Mobile network goes down",
     "ev_alert_issued": "Crisis centre issues a signed alert",
-    "ev_alert_relay": "The alert hops from phone to phone",
+    "ev_alert_relay": "Phones pass the alert to each other",
     "ev_reach_50": "Half of the phones have the alert",
     "ev_reach_90": "90% of the phones have the alert",
     "ev_couriers": "Couriers head out",
-    "ev_report": "Residents send reports",
-    "ev_pickup": "A courier collects reports",
-    "ev_delivered": "A courier hands over {n} reports",
-    "ev_ack": "Acknowledgements return to people",
-    "ev_alert_update": "A new alert version replaces the old",
     "run_note": (
         "Single run: {scenario}, seed {seed}, {residents} residents, adoption {adoption}%, "
         "range {range_m} m, couriers: {couriers}. Spread across seeds: docs/WYNIKI.md."
@@ -282,8 +263,6 @@ _EN: dict[str, str] = {
     "couriers_title_1h": (
         "After 1 h the centre has {few_pct} of reports with {few} couriers and {many_pct} with {many}"
     ),
-    "ev_delivered_first": "First report at the crisis centre",
-    "ev_summary": "Total: {reach:.0f}% alerted, {delivered}/{created} reports",
     "evac_sub_vs": (
         "All zone residents. The baseline has no sirens or patrols: it is a lower bound, not a forecast."
     ),
@@ -303,11 +282,12 @@ _EN: dict[str, str] = {
     "leg_handover": "alert handed over",
     "leg_ring": "has just received it",
     "leg_evac": "evacuating",
-    "leg_need": "reported a need for help",
     "leg_courier": "courier (rescuer)",
-    "leg_pickup": "courier picks up a report",
     "closeup_caption": "CLOSE-UP · dashed line: phones are connecting · blue: alert handed over",
     "scale_range": "{m} m: radio range",
+    "ev_evac_start": "The zone starts evacuating",
+    "ev_evac_half": "Half of the zone is safe",
+    "ev_end": "{pct:.0f}% of zone residents evacuated",
     "hours": "h",
     "minutes": "min",
 }

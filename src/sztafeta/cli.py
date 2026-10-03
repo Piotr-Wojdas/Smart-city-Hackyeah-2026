@@ -99,14 +99,10 @@ def animate(
         Path | None, typer.Option(help="Plik wynikowy (domyślnie w katalogu uruchomienia).")
     ] = None,
     lang: Annotated[str, typer.Option(help="Język napisów: pl albo en.")] = "pl",
-    fps: Annotated[int, typer.Option(help="Klatki na sekundę.")] = 15,
-    every: Annotated[
-        int | None,
-        typer.Option(
-            help="Co który snapshot staje się klatką; domyślnie gęsto przez pierwsze 90 min, potem rzadko."
-        ),
-    ] = None,
-    hold: Annotated[float, typer.Option(help="Zatrzymanie obrazu (s) przy każdym kluczowym momencie.")] = 1.2,
+    fps: Annotated[int, typer.Option(help="Klatki na sekundę.")] = 24,
+    step: Annotated[
+        float, typer.Option(help="Sekundy czasu modelu na jedną klatkę (poza zbliżeniem).")
+    ] = 12.0,
     closeup: Annotated[
         bool,
         typer.Option(
@@ -115,10 +111,15 @@ def animate(
     ] = True,
     dpi: Annotated[int, typer.Option(help="120 = 1920x1080.")] = 120,
     t_from: Annotated[float | None, typer.Option(help="Początek fragmentu (sekundy czasu modelu).")] = None,
-    t_to: Annotated[float | None, typer.Option(help="Koniec fragmentu (sekundy czasu modelu).")] = None,
+    t_to: Annotated[
+        float | None,
+        typer.Option(
+            help="Koniec (sekundy czasu modelu); domyślnie chwila, gdy ewakuacja jest prawie zakończona."
+        ),
+    ] = None,
     fmt: Annotated[str, typer.Option("--format", help="auto, mp4 albo gif.")] = "auto",
 ) -> None:
-    """Animacja mapy (MP4; gdy brak ffmpeg – GIF)."""
+    """Animacja mapy: awaria sieci, kurierzy, zbliżenie na łączenie się telefonów, ewakuacja (MP4 lub GIF)."""
     from sztafeta.viz.animate import render_animation
 
     def progress(done: int, total: int) -> None:
@@ -126,9 +127,7 @@ def animate(
             typer.echo(f"  klatka {done} z {total}")
 
     try:
-        path = render_animation(
-            run_dir, out, lang, fps, every, dpi, t_from, t_to, fmt, progress, hold, closeup
-        )
+        path = render_animation(run_dir, out, lang, fps, step, dpi, t_from, t_to, fmt, progress, closeup)
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         typer.echo(f"Błąd: {exc}", err=True)
         raise typer.Exit(code=2) from exc

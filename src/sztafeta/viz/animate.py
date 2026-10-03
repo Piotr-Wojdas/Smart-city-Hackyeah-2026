@@ -1,10 +1,13 @@
-"""Animacja mapy: sztafeta alertu między telefonami, ewakuacja, kurierzy, liczniki i narracja.
+"""Animacja mapy: jedna historia od awarii sieci do ewakuacji strefy zagrożenia.
 
-Obraz pokazuje tylko to, co niesie historię: telefony z aplikacją (szare = bez alertu, niebieskie =
-z alertem), przekazania alertu jako linie, ewakuujących się, zgłoszenia „potrzebuję pomocy”
-i kurierów. Osoby bez aplikacji i wątek fałszywego alertu nie są rysowane (są w liczbach i na
-wykresach). W trakcie animacji kamera raz zbliża się na jedno osiedle i w zwolnionym tempie pokazuje,
-jak telefony zestawiają połączenia i przekazują sobie alert.
+Kolejno: pada sieć komórkowa, PCZK wydaje alert, kurierzy ruszają w teren, kamera zbliża się na
+jedno osiedle i w zwolnionym tempie pokazuje, jak telefony zestawiają połączenia i przekazują sobie
+alert, a potem widać ewakuację mieszkańców strefy. Film kończy się, gdy ewakuacja jest w zasadzie
+zakończona. Obraz płynie bez zatrzymań.
+
+Rysowane jest tylko to, co niesie tę historię: telefony z aplikacją (szare = bez alertu, niebieskie =
+z alertem), przekazania alertu jako linie, ewakuujący się i kurierzy. Osoby bez aplikacji, zgłoszenia
+do PCZK i wątek fałszywego alertu są w liczbach, na wykresach i w karcie wyników.
 
 Eksport MP4 przez ffmpeg (systemowy albo z pakietu imageio-ffmpeg); gdy go nie ma – GIF przez pillow.
 """
@@ -39,20 +42,19 @@ _EVENTS = {
     "alert_issued",
     "alert_received",
     "courier_dispatched",
-    "report_created",
-    "report_picked_up",
+    "evacuation_start",
     "contact",
 }
 _STATE_EVACUATING = 3
 _STATE_SAFE = 4
-_STATE_NEED_HELP = 5
 _ROLE_COURIER = 1
 _ROLE_HUB = 2
 _MAP_BOX = (0.012, 0.150, 0.672, 0.780)
 _LEGEND_BOX = (0.012, 0.058, 0.672, 0.082)
 _PANEL_BOX = (0.698, 0.0, 0.302, 1.0)
-_DENSE_S = 5400.0  # pierwsze 90 min po awarii pokazujemy gęściej niż resztę
-_STORY_LINES = 6
+_STORY_LINES = 8
+_END_SHARE = 0.9  # film kończy się, gdy do punktu ewakuacji dotarło 90% tych, którzy tam dotrą
+_END_TAIL_S = 300.0  # tyle czasu modelu film trwa jeszcze po ostatnim wpisie narracji
 _CLOSE_HALF_WIDTH_M = 130.0
 _CLOSE_WINDOW_S = 100.0
 _CLOSE_STEP_S = 0.5
@@ -80,73 +82,53 @@ class Closeup:
     handovers: int
 
 
-def build_story(run: RunData, lang: str) -> list[tuple[float, str]]:
-    """Kluczowe momenty przebiegu jako (czas, napis), w kolejności, w jakiej widać je na mapie."""
+def story_end(run: RunData) -> float:
+    """Koniec filmu: chwila, w której do punktu ewakuacji dotarła większość tych, którzy tam dotrą."""
+    evacuated = run.metrics["evacuated_zone"].to_numpy(dtype=float)
+    times = run.metrics["t"].to_numpy(dtype=float)
+    last = float(run.t[-1])
+    if evacuated.size == 0 or evacuated[-1] <= 0.0:
+        return last
+    done = np.flatnonzero(evacuated >= _END_SHARE * evacuated[-1])
+    return float(min(times[done[0]] + _END_TAIL_S, last))
+
+
+def build_story(run: RunData, lang: str, end_t: float) -> list[tuple[float, str]]:
+    """Kluczowe momenty historii jako (czas, napis): awaria, alert, kurierzy, sztafeta, ewakuacja."""
     story: list[tuple[float, str]] = []
     seen: set[str] = set()
-
-    def once(key: str, t: float, **fmt: object) -> None:
-        if key not in seen:
-            seen.add(key)
-            story.append((t, tr(lang, key, **fmt)))
-
-    dispatched = False
+    first_event = {
+        "network_down": "ev_network_down",
+        "alert_issued": "ev_alert_issued",
+        "courier_dispatched": "ev_couriers",
+        "evacuation_start": "ev_evac_start",
+    }
     for ev in run.events:
-        kind = ev["type"]
-        t = float(ev["t"])
-        data = ev.get("data", {})
-        if kind == "network_down":
-            once("ev_network_down", t)
-        elif kind == "alert_issued":
-            once("ev_alert_issued" if data.get("seq", 1) == 1 else "ev_alert_update", t)
-        elif kind == "courier_dispatched":
-            dispatched = True
-            once("ev_couriers", t)
-        elif kind == "report_created":
-            once("ev_report", t)
-        elif kind == "report_picked_up" and dispatched:
-            once("ev_pickup", t)
+        key = first_event.get(ev["type"])
+        if key is not None and key not in seen:
+            seen.add(key)
+            story.append((float(ev["t"]), tr(lang, key)))
 
     m = run.metrics
     times = m["t"].to_numpy(dtype=float)
     reach = m["alert_reach_app"].to_numpy(dtype=float)
-    for level, key in ((5.0, "ev_alert_relay"), (50.0, "ev_reach_50"), (90.0, "ev_reach_90")):
-        hit = np.flatnonzero(reach >= level)
+    evacuated = m["evacuated_zone"].to_numpy(dtype=float)
+    thresholds = (
+        (reach, 5.0, "ev_alert_relay"),
+        (reach, 50.0, "ev_reach_50"),
+        (evacuated, 50.0, "ev_evac_half"),
+        (reach, 90.0, "ev_reach_90"),
+    )
+    for series, level, key in thresholds:
+        hit = np.flatnonzero(series >= level)
         if hit.size:
             story.append((float(times[hit[0]]), tr(lang, key)))
-    # kurier oddaje paczkę zgłoszeń: skok licznika o co najmniej 10 w ciągu 2 minut
-    delivered = m["reports_delivered"].to_numpy(dtype=float)
-    span = max(round(120.0 / max(float(times[1] - times[0]), 1.0)), 1) if times.size > 1 else 1
-    if delivered.size > span:
-        jump = delivered[span:] - delivered[:-span]
-        burst = np.flatnonzero(jump >= 10)
-        if burst.size:
-            k = int(burst[0])
-            end = min(k + 2 * span, delivered.size - 1)
-            n = int(delivered[end] - delivered[k])
-            story.append((float(times[k + span]), tr(lang, "ev_delivered", n=n)))
-        elif delivered[-1] > 0:
-            first = int(np.flatnonzero(delivered > 0)[0])
-            story.append((float(times[first]), tr(lang, "ev_delivered_first")))
-    acks = m["acks_received"].to_numpy(dtype=float)
-    level = 10.0 if acks.size and acks[-1] >= 10 else 1.0
-    got = np.flatnonzero(acks >= level)
-    if got.size:
-        story.append((float(times[got[0]]), tr(lang, "ev_ack")))
+    # ostatni wpis pojawia się chwilę przed końcem filmu, żeby dało się go przeczytać bez zatrzymywania obrazu
+    mark = max(end_t - _END_TAIL_S, 0.0)
+    story = [item for item in story if item[0] < mark]
     if times.size:
-        last = m.iloc[-1]
-        story.append(
-            (
-                float(times[-1]),
-                tr(
-                    lang,
-                    "ev_summary",
-                    reach=float(last["alert_reach_app"]),
-                    delivered=int(last["reports_delivered"]),
-                    created=int(last["reports_created"]),
-                ),
-            )
-        )
+        at_mark = float(evacuated[max(int(np.searchsorted(times, mark, side="right")) - 1, 0)])
+        story.append((mark, tr(lang, "ev_end", pct=at_mark)))
     story.sort(key=lambda item: item[0])
     return story
 
@@ -186,66 +168,37 @@ def pick_closeup(
 
 def storyboard(
     t_end: float,
-    snapshot_dt: float,
-    outage_t: float,
-    alert_t: float,
-    story_times: list[float],
     closeup: Closeup | None,
     fps: int,
-    hold_s: float,
-    every: int | None = None,
+    step_s: float,
     t_from: float | None = None,
-    t_to: float | None = None,
 ) -> list[Shot]:
     """Plan filmu: kolejne klatki jako (czas modelu, stopień zbliżenia).
 
-    Bez podanego `every`: przed alertem 60 s czasu modelu na klatkę, przez pierwsze 90 min po awarii
-    20 s, potem 120 s. Przy każdym kluczowym momencie narracji obraz zatrzymuje się na `hold_s`.
-    Zbliżenie biegnie w zwolnionym tempie (2 s na klatkę) z sekundowym najazdem i odjazdem kamery.
+    Czas modelu płynie równo, `step_s` sekund na klatkę, bez zatrzymań. Jedyny wyjątek to zbliżenie:
+    sekundowy najazd kamery, zwolnione tempo (pół sekundy czasu modelu na klatkę) i sekundowy odjazd.
     """
     lo = 0.0 if t_from is None else t_from
-    hi = t_end if t_to is None else min(t_to, t_end)
-    if hi < lo:
+    if t_end < lo or step_s <= 0.0:
         return []
-    hold = round(hold_s * fps)
     ramp = max(fps, 2)
-    use_close = closeup is not None and closeup.t0 >= lo and closeup.t1 <= hi
-    pending = sorted(tm for tm in story_times if lo <= tm <= hi)
+    use_close = closeup is not None and closeup.t0 >= lo and closeup.t1 <= t_end
     shots: list[Shot] = []
-
-    def emit(t: float) -> None:
-        shots.append(Shot(t))
-        hit = False
-        while pending and pending[0] <= t:
-            pending.pop(0)
-            hit = True
-        if hit:
-            shots.extend([Shot(t)] * hold)
-
     t = lo
     zoomed = False
-    while t <= hi + 1e-9:
+    while t <= t_end + 1e-9:
         if use_close and not zoomed and closeup is not None and t >= closeup.t0:
             zoomed = True
-            shots.extend(Shot(closeup.t0, (k + 1) / ramp) for k in range(ramp))
+            # najazd i odjazd bez klatek skrajnych: nie dublują pierwszej klatki zbliżenia ani widoku miasta
+            shots.extend(Shot(closeup.t0, (k + 1) / ramp) for k in range(ramp - 1))
             n_close = round((closeup.t1 - closeup.t0) / _CLOSE_STEP_S)
             shots.extend(Shot(closeup.t0 + k * _CLOSE_STEP_S, 1.0) for k in range(n_close + 1))
-            shots.extend(Shot(closeup.t1, 1.0 - (k + 1) / ramp) for k in range(ramp))
+            shots.extend(Shot(closeup.t1, 1.0 - (k + 1) / ramp) for k in range(ramp - 1))
             t = closeup.t1
             continue
-        emit(t)
-        if every is not None:
-            step = max(every, 1) * snapshot_dt
-        elif t < alert_t:
-            step = 60.0
-        elif t < outage_t + _DENSE_S:
-            step = 20.0
-        else:
-            step = 120.0
-        if t < hi < t + step:
-            t = hi  # zawsze kończymy dokładnie na ostatniej chwili zakresu (bilans)
-        else:
-            t += step
+        shots.append(Shot(t))
+        # zawsze kończymy dokładnie na ostatniej chwili
+        t = t_end if t < t_end < t + step_s else t + step_s
     return shots
 
 
@@ -290,7 +243,8 @@ class MapAnimation:
         self._start = datetime.fromisoformat(static["run"]["start"])
         self._metric_t = run.metrics["t"].to_numpy()
         self._range_m = float(static["map"].get("radio_range_m", 40.0))
-        self.story = build_story(run, lang)
+        self.end_t = story_end(run)
+        self.story = build_story(run, lang, self.end_t)
         self.outage_t = next((float(e["t"]) for e in run.events if e["type"] == "network_down"), 0.0)
         self.alert_t = next((float(e["t"]) for e in run.events if e["type"] == "alert_issued"), 0.0)
 
@@ -301,10 +255,6 @@ class MapAnimation:
         self._got_peer = np.array([int(e.get("peer", -1)) for e in got], dtype=np.int64)
         self._alert_at = np.full(n, np.inf)
         self._alert_at[self._got_agent] = self._got_t
-        picks = [e for e in run.events if e["type"] == "report_picked_up" and "peer" in e]
-        self._pick_t = np.array([float(e["t"]) for e in picks], dtype=np.float64)
-        self._pick_courier = np.array([int(e["agent"]) for e in picks], dtype=np.int64)
-        self._pick_from = np.array([int(e["peer"]) for e in picks], dtype=np.int64)
 
         home = np.column_stack(
             [
@@ -416,15 +366,12 @@ class MapAnimation:
         self._idle_sc = self._scatter(style.PHONE_IDLE, 3)
         self._alert_sc = self._scatter(style.PHONE_ALERT, 4)
         self._evac_sc = self._scatter(style.EVACUEE, 5)
-        self._need_sc = self._scatter(style.NEED_HELP, 6)
         self._contact_lines = LineCollection(
             [], colors=style.INK, linewidths=2.2, linestyles=(0, (3, 2.5)), zorder=7
         )
         ax.add_collection(self._contact_lines)
         self._hand_lines = LineCollection([], linewidths=2.4, zorder=8, capstyle="round")
         ax.add_collection(self._hand_lines)
-        self._pick_lines = LineCollection([], colors=style.VIOLET, linewidths=2.0, alpha=0.85, zorder=8)
-        ax.add_collection(self._pick_lines)
         self._ring_sc = self._scatter(style.RING, 9)
         self._packet_sc = self._scatter(style.PACKET, 10)
 
@@ -535,19 +482,17 @@ class MapAnimation:
             self._handle(style.PHONE_ALERT, tr(lang, "leg_alert"), 8.0),
             Line2D([], [], color=style.BLUE, linewidth=2.4, label=tr(lang, "leg_handover")),
             self._handle(style.RING, tr(lang, "leg_ring"), 11.0),
-            self._handle(style.EVACUEE, tr(lang, "leg_evac"), 8.0),
-            self._handle(style.NEED_HELP, tr(lang, "leg_need"), 10.0),
+            self._handle(style.EVACUEE, tr(lang, "leg_evac"), 9.0),
             self._handle(style.COURIER, tr(lang, "leg_courier"), 10.0),
-            Line2D([], [], color=style.VIOLET, linewidth=2.0, label=tr(lang, "leg_pickup")),
         ]
         ax.legend(
             handles=handles,
             loc="upper left",
             bbox_to_anchor=(0.0, 1.0),
-            ncol=4,
-            fontsize=13.5,
+            ncol=3,
+            fontsize=14.5,
             labelspacing=0.5,
-            columnspacing=2.2,
+            columnspacing=3.0,
             handlelength=1.5,
             handletextpad=0.5,
             borderaxespad=0.0,
@@ -604,13 +549,8 @@ class MapAnimation:
             p.add_patch(bar)
             self._bars[key] = bar
             y -= 0.112
-        p.text(left, y, tr(lang, "tile_reports"), fontsize=14.5, color=style.INK2)
-        self._values["reports"] = p.text(left, y - 0.040, "", fontsize=23, fontweight="bold")
-        self._values["reports_sub"] = p.text(left, y - 0.070, "", fontsize=14, color=style.INK2)
-        self._values["acks"] = p.text(left, y - 0.097, "", fontsize=14, color=style.INK2)
-
-        p.text(left, 0.372, tr(lang, "story"), fontsize=14.5, color=style.INK2)
-        self._story_txt = [p.text(left, 0.326 - 0.050 * k, "", fontsize=15) for k in range(_STORY_LINES)]
+        p.text(left, 0.535, tr(lang, "story"), fontsize=14.5, color=style.INK2)
+        self._story_txt = [p.text(left, 0.484 - 0.052 * k, "", fontsize=14.5) for k in range(_STORY_LINES)]
 
     # ------------------------------------------------------------------ klatka
 
@@ -634,13 +574,11 @@ class MapAnimation:
 
         moving_out = state == _STATE_EVACUATING
         safe = state == _STATE_SAFE
-        need = (state == _STATE_NEED_HELP) & self._phone
-        at_home = self._phone & ~moving_out & ~safe & ~need
+        at_home = self._phone & ~moving_out & ~safe
         has_alert = self._alert_at <= t
         self._place(self._idle_sc, xy[at_home & ~has_alert], style.PHONE_IDLE, gain)
         self._place(self._alert_sc, xy[at_home & has_alert], style.PHONE_ALERT, gain)
         self._place(self._evac_sc, xy[self._person & moving_out], style.EVACUEE, gain)
-        self._place(self._need_sc, xy[need], style.NEED_HELP, gain)
         self._place(self._courier_sc, xy[self._courier], style.COURIER, 1.0 + 0.6 * z)
         n_safe = int((self._person & safe).sum())
         crowd = people(self.lang, n_safe)
@@ -665,11 +603,6 @@ class MapAnimation:
         base = to_rgba(style.BLUE)
         self._hand_lines.set_color([(base[0], base[1], base[2], float(a)) for a in fade])
         self._hand_lines.set_linewidth(3.0 + 1.5 * z)
-
-        picked = (t - self._pick_t >= 0.0) & (t - self._pick_t < 60.0)
-        self._pick_lines.set_segments(
-            [xy[[a, b]] for a, b in zip(self._pick_from[picked], self._pick_courier[picked], strict=True)]
-        )
 
         # tylko w zbliżeniu: połączenie w trakcie zestawiania i „pakiet” lecący do odbiorcy tuż przed odbiorem
         if close:
@@ -736,24 +669,6 @@ class MapAnimation:
         self._values["evac"].set_text(tr(lang, "tile_evac_value", pct=evac))
         self._bars["alert"].set_width(0.86 * reach / 100.0)
         self._bars["evac"].set_width(0.86 * evac / 100.0)
-        self._values["reports"].set_text(
-            tr(
-                lang,
-                "tile_reports_value",
-                delivered=int(row["reports_delivered"]),
-                created=int(row["reports_created"]),
-            )
-        )
-        self._values["reports_sub"].set_text(
-            tr(
-                lang,
-                "tile_reports_sub",
-                need_delivered=int(row["need_help_delivered"]),
-                need_created=int(row["need_help_created"]),
-            )
-        )
-        self._values["acks"].set_text(tr(lang, "tile_acks_value", n=int(row["acks_received"])))
-
         past = [item for item in self.story if item[0] <= t][-_STORY_LINES:]
         for k, txt in enumerate(self._story_txt):
             if k < len(past):
@@ -768,28 +683,14 @@ class MapAnimation:
     def shots(
         self,
         fps: int,
-        hold_s: float,
-        every: int | None = None,
+        step_s: float,
         t_from: float | None = None,
         t_to: float | None = None,
         closeup: bool = True,
     ) -> list[Shot]:
-        """Plan filmu dla tego uruchomienia."""
-        times = self.run.t
-        dt = float(times[1] - times[0]) if times.size > 1 else 10.0
-        return storyboard(
-            float(times[-1]),
-            dt,
-            self.outage_t,
-            self.alert_t,
-            [t for t, _ in self.story],
-            self.closeup if closeup else None,
-            fps,
-            hold_s,
-            every,
-            t_from,
-            t_to,
-        )
+        """Plan filmu dla tego uruchomienia; bez `t_to` kończy się wraz z ewakuacją."""
+        end = self.end_t if t_to is None else min(t_to, float(self.run.t[-1]))
+        return storyboard(end, self.closeup if closeup else None, fps, step_s, t_from)
 
 
 def _make_writer(fps: int, fmt: str) -> tuple[AbstractMovieWriter, str]:
@@ -813,34 +714,30 @@ def render_animation(
     run_dir: Path,
     out: Path | None = None,
     lang: str = "pl",
-    fps: int = 15,
-    every: int | None = None,
+    fps: int = 24,
+    step_s: float = 12.0,
     dpi: int = 120,
     t_from: float | None = None,
     t_to: float | None = None,
     fmt: str = "auto",
     progress: Callable[[int, int], None] | None = None,
-    hold_s: float = 1.2,
     closeup: bool = True,
 ) -> Path:
-    """Renderuje animację uruchomienia z `run_dir`. Zwraca ścieżkę pliku wynikowego."""
+    """Renderuje animację uruchomienia z `run_dir`. `step_s` to sekundy czasu modelu na klatkę."""
     run = load_run(run_dir, _EVENTS)
     writer, ext = _make_writer(fps, fmt)
     if ext == ".gif":
         dpi = min(dpi, 60)
     anim = MapAnimation(run, lang=lang, dpi=dpi)
-    plan = anim.shots(fps, hold_s, every, t_from, t_to, closeup)
+    plan = anim.shots(fps, step_s, t_from, t_to, closeup)
     if not plan:
         raise ValueError("Brak klatek w wybranym zakresie czasu")
     target = out if out is not None else run_dir / f"animacja_{lang}{ext}"
     if target.suffix.lower() != ext:
         target = target.with_suffix(ext)
-    previous: Shot | None = None
     with writer.saving(anim.fig, str(target), dpi):
         for k, shot in enumerate(plan):
-            if shot != previous:
-                anim.draw(shot)
-                previous = shot
+            anim.draw(shot)
             writer.grab_frame()
             if progress is not None:
                 progress(k + 1, len(plan))

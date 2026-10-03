@@ -114,64 +114,70 @@ def test_frame_and_animation_render(run_dir: Path, tmp_path: Path) -> None:
 
     png = render_frame(run_dir, tmp_path / "klatka.png", t=900.0, lang="en", dpi=50)
     assert png.stat().st_size > 10_000
-    movie = render_animation(run_dir, tmp_path / "anim", every=30, dpi=50, fps=10, hold_s=0.2, closeup=False)
+    movie = render_animation(run_dir, tmp_path / "anim", step_s=120.0, dpi=50, fps=10, closeup=False)
     assert movie.suffix in (".mp4", ".gif")
     assert movie.stat().st_size > 5_000
     zoom = render_frame(run_dir, tmp_path / "zblizenie.png", lang="pl", dpi=50, closeup=True)
     assert zoom.stat().st_size > 5_000
 
 
-def test_story_is_ordered_and_ends_with_summary(run_dir: Path) -> None:
+def test_story_tells_outage_couriers_relay_and_evacuation(run_dir: Path) -> None:
     from sztafeta.io.reader import load_run
-    from sztafeta.viz.animate import _EVENTS, build_story
+    from sztafeta.viz.animate import _EVENTS, build_story, story_end
 
     run = load_run(run_dir, _EVENTS)
-    story = build_story(run, "pl")
+    end = story_end(run)
+    story = build_story(run, "pl", end)
     times = [t for t, _ in story]
     texts = [text for _, text in story]
-    assert times == sorted(times)
+    assert times == sorted(times) and 0.0 <= times[-1] < end <= run.t[-1]
     assert texts[0] == "Awaria sieci komórkowej"
-    assert texts[-1].startswith("Bilans:") and times[-1] == run.t[-1]
+    assert texts[-1].startswith("Ewakuowano")
     assert len(texts) == len(set(texts))  # każdy moment pojawia się raz
-    # kurier nie może „zbierać zgłoszeń”, zanim wyruszył
-    assert texts.index("Kurierzy wyruszają w teren") < texts.index("Kurier zbiera zgłoszenia")
-    # „alert idzie od telefonu do telefonu” dopiero wtedy, gdy widać go w liczniku zasięgu
-    relay_t = times[texts.index("Alert idzie od telefonu do telefonu")]
-    row = run.metrics[run.metrics["t"] == relay_t].iloc[0]
-    assert row["alert_reach_app"] >= 5.0
-    # wątek fałszywego alertu nie jest częścią animacji
-    assert not any("fałszyw" in text.lower() or "troll" in text.lower() for text in texts)
+    order = [
+        "Awaria sieci komórkowej",
+        "PCZK wydaje podpisany alert",
+        "Kurierzy wyruszają w teren",
+        "Telefony przekazują sobie alert",
+        "Strefa zaczyna się ewakuować",
+    ]
+    assert [text for text in texts if text in order] == order
+    # animacja nie opowiada o fałszywym alercie ani o zgłoszeniach do PCZK
+    banned = ("fałszyw", "troll", "zgłosze", "potwierdz")
+    assert not any(word in text.lower() for text in texts for word in banned)
+    # film kończy się, gdy do punktu ewakuacji dotarła większość tych, którzy tam dotrą
+    evacuated = run.metrics["evacuated_zone"].to_numpy()
+    at_end = evacuated[int(np.searchsorted(run.metrics["t"].to_numpy(), end, side="right")) - 1]
+    assert at_end >= 0.9 * evacuated[-1] > 0
 
 
-def test_storyboard_paces_film_and_inserts_closeup() -> None:
+def test_storyboard_runs_smoothly_and_inserts_closeup() -> None:
     from sztafeta.viz.animate import Closeup, Shot, storyboard
 
     close = Closeup(0.0, 0.0, 1500.0, 1600.0, 6)
-    shots = storyboard(21600.0, 10.0, 0.0, 600.0, [600.0, 7200.0], close, fps=10, hold_s=0.5)
+    shots = storyboard(7200.0, close, fps=10, step_s=12.0)
     times = [s.t for s in shots]
     assert times == sorted(times)  # czas nigdy się nie cofa
-    assert shots[0] == Shot(0.0) and shots[-1] == Shot(21600.0)
-    # tempo: przed alertem 60 s na klatkę, potem 20 s, po 90 min 120 s
-    city = sorted({s.t for s in shots if s.zoom == 0.0})
-    assert city[:3] == [0.0, 60.0, 120.0]
-    assert 620.0 in city and 640.0 in city and 5400.0 in city and 5520.0 in city and 5420.0 not in city
-    # zatrzymanie na kluczowym momencie: klatka + 5 powtórzeń
-    assert shots.count(Shot(600.0)) == 6 and shots.count(Shot(7200.0)) == 6
+    assert shots[0] == Shot(0.0) and shots[-1] == Shot(7200.0)
+    # poza zbliżeniem czas płynie równo i żadna klatka się nie powtarza (brak zatrzymań obrazu)
+    city = [s.t for s in shots if s.zoom == 0.0]
+    assert len(city) == len(set(city))
+    before = [t for t in city if t < 1500.0]
+    assert {round(b - a, 6) for a, b in itertools.pairwise(before)} == {12.0}
     # zbliżenie: najazd, zwolnione tempo (0,5 s na klatkę), odjazd
     zoomed = [s for s in shots if s.zoom == 1.0]
-    assert zoomed[0].t == 1500.0 and zoomed[-1].t == 1600.0
-    steps = {round(b.t - a.t, 3) for a, b in itertools.pairwise(zoomed)}
-    assert steps <= {0.5, 0.0}
+    assert zoomed[0].t == 1500.0 and zoomed[-1].t == 1600.0 and len(zoomed) == 201
+    assert {round(b.t - a.t, 3) for a, b in itertools.pairwise(zoomed)} == {0.5}
     ramp_in = [s.zoom for s in shots if s.t == 1500.0 and 0.0 < s.zoom < 1.0]
     ramp_out = [s.zoom for s in shots if s.t == 1600.0 and 0.0 < s.zoom < 1.0]
     assert ramp_in == sorted(ramp_in) and ramp_out == sorted(ramp_out, reverse=True) and len(ramp_in) == 9
-    assert 1520.0 not in city and 1620.0 in city  # czas zbliżenia nie jest pokazywany drugi raz
+    assert not any(1500.0 < t < 1600.0 for t in city)  # czas zbliżenia nie jest pokazywany drugi raz
 
-    plain = storyboard(21600.0, 10.0, 0.0, 600.0, [], None, fps=10, hold_s=0.5)
-    assert all(s.zoom == 0.0 for s in plain)
-    uniform = storyboard(21600.0, 10.0, 0.0, 600.0, [], close, 10, 0.0, every=3, t_from=600.0, t_to=1200.0)
-    assert [s.t for s in uniform] == [600.0 + 30.0 * k for k in range(21)]  # zbliżenie poza zakresem
-    assert storyboard(100.0, 10.0, 0.0, 0.0, [], None, 10, 0.0, t_from=500.0, t_to=600.0) == []
+    plain = storyboard(7200.0, None, fps=10, step_s=12.0)
+    assert all(s.zoom == 0.0 for s in plain) and len(plain) == 601
+    part = storyboard(1200.0, close, 10, 30.0, t_from=600.0)
+    assert [s.t for s in part] == [600.0 + 30.0 * k for k in range(21)]  # zbliżenie poza zakresem
+    assert storyboard(100.0, None, 10, 12.0, t_from=500.0) == []
 
 
 def test_closeup_picks_earliest_dense_burst_of_handovers() -> None:

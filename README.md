@@ -44,9 +44,9 @@ uv run sztafeta run --preset flood-stronie --seed 42 --baseline
 # wykresy do slajdów i karta wyników (PNG 16:9); wariant bazowy jest wykrywany automatycznie
 uv run sztafeta charts results/flood-stronie_s42
 
-# animacja mapy (MP4 1920x1080, ok. 1 min): widok miasta i zbliżenie na osiedle, w którym telefony
-# łączą się i przekazują sobie alert; --no-closeup pomija zbliżenie, --t-from/--t-to wycinają fragment,
-# --lang en daje napisy angielskie
+# animacja mapy (MP4 1920x1080, ok. 40 s, bez zatrzymań): awaria sieci, wyjazd kurierów, zbliżenie na
+# osiedle, w którym telefony łączą się i przekazują sobie alert, ewakuacja strefy zagrożenia.
+# --no-closeup pomija zbliżenie, --step zmienia tempo, --t-to wydłuża film, --lang en daje napisy angielskie
 uv run sztafeta animate results/flood-stronie_s42
 
 # pojedyncza klatka jako PNG: widok miasta w chwili t albo kadr zbliżenia
@@ -102,9 +102,10 @@ Mieszkańcy strefy zagrożenia, którzy dostali zweryfikowany alert, po czasie r
 ewakuacji; część zostaje i zgłasza potrzebę pomocy. Kurierzy zbierają zgłoszenia po drodze
 i oddają je w hubie, a PCZK odsyła potwierdzenia zbiorcze.
 
-Animacja celowo pokazuje tylko sztafetę: telefony z aplikacją, przekazania alertu, ewakuację, zgłoszenia
-i kurierów. Osób bez aplikacji i wątku fałszywego alertu na niej nie ma, żeby obraz był czytelny;
-oba są w liczbach, na wykresach i w karcie wyników.
+Animacja celowo opowiada tylko jedną historię: pada sieć, kurierzy ruszają w teren, telefony przekazują
+sobie alert (zbliżenie), mieszkańcy strefy się ewakuują; kończy się, gdy ewakuacja jest prawie zakończona.
+Osób bez aplikacji, zgłoszeń do PCZK i wątku fałszywego alertu na niej nie ma, żeby obraz był czytelny;
+wszystkie trzy są w liczbach, na wykresach i w karcie wyników.
 
 ## Architektura
 

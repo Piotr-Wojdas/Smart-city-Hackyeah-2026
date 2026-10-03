@@ -48,8 +48,7 @@ class Marker:
 # dopóki się nie ewakuują; telefon bez alertu jest celowo blady, żeby niebieskie „ma alert” było widać.
 PHONE_IDLE = Marker("o", 11.0, PHONE_GRAY, "none", 0.0)
 PHONE_ALERT = Marker("o", 17.0, BLUE, "none", 0.0)
-EVACUEE = Marker("^", 17.0, YELLOW, "none", 0.0)
-NEED_HELP = Marker("P", 52.0, RED, SURFACE, 0.7)
+EVACUEE = Marker("^", 24.0, YELLOW, INK, 0.35)
 # telefon, który właśnie odebrał zweryfikowany alert
 RING = Marker("o", 130.0, "none", BLUE, 1.5)
 # „pakiet” lecący od nadawcy do odbiorcy (tylko w zbliżeniu)
