@@ -369,6 +369,7 @@ class RadioParams:
 @dataclass(slots=True)
 class RoutingParams:
     relay_enabled: bool = True  # False = wariant bazowy „bez Sztafety”
+    phone_relay: bool = True  # False = przekazują tylko kurierzy i hub (telefony mieszkańców nie)
     alert_ttl_hops: int = 100
     ack_ttl_hops: int = 100
     alert_lifetime_s: float = 12 * 3600.0
@@ -415,6 +416,7 @@ class BehaviorParams:
     report_update_delay_s: float = 1800.0
     p_sensitive: float = 0.30
     wom_enabled: bool = True
+    wom_household_only: bool = False  # True = ustnie informują się tylko domownicy
     wom_range_m: float = 10.0
     wom_prob_per_min: float = 0.20
     wom_interval_s: float = 10.0
@@ -424,7 +426,7 @@ class BehaviorParams:
 @dataclass(slots=True)
 class PopulationParams:
     n_residents: int = 3000
-    n_couriers: int = 4
+    n_couriers: int = 5
     n_trolls: int = 1
     courier_vehicle_share: float = 0.5
     courier_walk_speed: float = 1.4
@@ -522,6 +524,7 @@ class AgentArrays:
     battery: FloatArr  # 0..100
     informed_t: FloatArr  # czas zweryfikowanego alertu w aplikacji (nan = brak)
     wom_t: FloatArr  # czas informacji ustnej (nan = brak)
+    evac_order_t: FloatArr  # czas zweryfikowanego alertu „ewakuuj” w aplikacji (nan = brak lub odwołany)
     evac_start_t: FloatArr
     evac_done_t: FloatArr
 

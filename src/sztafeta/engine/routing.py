@@ -463,8 +463,9 @@ class Router:
             rev = rev[order]
         return pk, rev
 
-    def can_send(self, src: int, dst: int, p: int) -> bool:
-        if not self.have[src, p] or self.known[dst, p] or not self.live[p]:
+    def can_send(self, src: int, dst: int, p: int, t: float) -> bool:
+        """Czy `src` może w chwili `t` wysłać pakiet `p` do `dst` (także: czy pakiet nie wygasł)."""
+        if not self.have[src, p] or self.known[dst, p] or not self.live[p] or self.expires[p] <= t:
             return False
         if self._rep[p]:
             return bool(self.copies[src, p] > 1) or bool(self.custodian[dst])

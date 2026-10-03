@@ -168,10 +168,14 @@ agregowane na kontakt, żeby plik nie miał milionów wierszy. Zdarzenia w pliku
 | `wom_reach_zone_all` | % | to samo w strefie zagrożenia |
 | `evac_started_zone` | % | mieszkańcy strefy, którzy rozpoczęli ewakuację |
 | `evacuated_zone` | % | mieszkańcy strefy, którzy dotarli do punktu ewakuacji |
+| `evacuated_zone_app` | % | w tym osoby z aplikacją (część `evacuated_zone`, ten sam mianownik) |
+| `evacuated_zone_wom` | % | w tym osoby bez aplikacji, poinformowane ustnie |
 | `reports_created` | liczba | zgłoszenia wysłane (po deduplikacji wersji) |
 | `reports_delivered` | liczba | zgłoszenia, które dotarły do PCZK |
 | `need_help_created` / `need_help_delivered` | liczba | jak wyżej, tylko „potrzebuję pomocy” |
-| `delay_median_s` / `delay_p90_s` | s | opóźnienie dostarczenia (od utworzenia do PCZK) dotychczas dostarczonych |
+| `reports_zone_created` / `reports_zone_delivered` | liczba | zgłoszenia mieszkańców strefy zagrożenia |
+| `reports_outside_created` / `reports_outside_delivered` | liczba | zgłoszenia mieszkańców spoza strefy |
+| `delay_median_s` / `delay_p90_s` | s | opóźnienie dostarczenia (od utworzenia do PCZK), liczone **tylko po zgłoszeniach dostarczonych** |
 | `acks_received` | liczba | zgłaszający, do których wróciło potwierdzenie |
 | `acks_received_pct` | % | to samo względem zgłoszeń dostarczonych |
 | `fake_received_devices` | liczba | urządzenia, które odebrały fałszywy alert |
@@ -186,7 +190,9 @@ Mianownikiem są mieszkańcy z rolą `resident` (bez trolla, kurierów i huba).
 `summary.json` zawiera wartości końcowe oraz: `t50_app_s`, `t90_app_s`, `t50_zone_app_s`,
 `t90_zone_app_s`, `t50_evacuated_zone_s` (sekundy od wydania alertu; `null` = nie osiągnięto),
 `alert_reach_app_1h` / `_3h`, `reports_delivered_pct`, `reports_delivered_pct_1h` / `_3h`,
-`need_help_delivered_pct`, `contacts_interrupted`, `packets_evicted`, liczebności populacji
+`reports_delivered_zone_pct`, `reports_delivered_outside_pct`, `need_help_delivered_pct`,
+`evacuated_zone_app`, `evacuated_zone_wom`, `ack_transfer_pct` (odsetek transferów będących
+potwierdzeniami), `contacts_interrupted`, `packets_evicted`, liczebności populacji
 i identyfikację uruchomienia (`run_id`, `preset`, `seed`, `baseline`).
 
 ## 7. Widok telefonu: `Simulation.phone_view(agent)` (`sztafeta inspect`)

@@ -106,6 +106,7 @@ def build_population(params: Params, city: CityMap, rng: np.random.Generator) ->
         battery=battery,
         informed_t=np.full(n, np.nan),
         wom_t=np.full(n, np.nan),
+        evac_order_t=np.full(n, np.nan),
         evac_start_t=np.full(n, np.nan),
         evac_done_t=np.full(n, np.nan),
     )

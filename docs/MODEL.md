@@ -49,14 +49,17 @@ i można go nadpisać z linii poleceń: `sztafeta run --set radio.range_m=80`.
 |---|---|---|---|
 | `population.n_residents` | 3000 | ok. 60% liczby mieszkańców miasta (4956 osób, GUS, stan na 31.12.2024), więc gęstość telefonów jest zaniżona (konserwatywnie); mieści się w limicie czasu obliczeń | założenie zespołu; liczba ludności: GUS za polskawliczbach.pl |
 | `behavior.household_mean` | 2,5 osoby | rząd wielkości średniego gospodarstwa domowego w Polsce | GUS, NSP 2021 (ok. 2,5–2,6) |
-| `behavior.adoption` | 30% | odsetek mieszkańców z zainstalowanym modułem; kluczowa niewiadoma, dlatego przegląd 10–70% | założenie zespołu |
+| `behavior.adoption` | 30% | odsetek mieszkańców z zainstalowanym **i działającym** modułem (Bluetooth włączony, aplikacja może pracować w tle); kluczowa niewiadoma, dlatego przegląd 5–50% | założenie zespołu |
 | `behavior.lang_shares` | PL 90%, UK 5%, EN 2%, DE 2%, CS 1% | język telefonu; region przygraniczny i turystyczny | założenie zespołu |
-| `population.n_couriers` | 4 | zastępy OSP/PSP/WOPR i wolontariusze z telefonem w trybie Ratownik | założenie zespołu |
+| `population.n_couriers` | 5 | zastępy OSP/PSP/WOPR i wolontariusze z telefonem w trybie Ratownik; przegląd 2–10 oraz wariant bez kurierów | założenie zespołu |
 | `population.courier_vehicle_share` | 50% | połowa kurierów w pojazdach, połowa pieszo | założenie zespołu |
-| `population.n_trolls` | 1 | jeden agent rozsyłający fałszywe alerty | założenie zespołu |
+| `population.n_trolls` | 1 | jeden agent rozsyłający fałszywe alerty; skanuje ciągle, a poza fałszywką zachowuje się jak zwykły telefon (przekazuje też prawdziwe pakiety) | założenie zespołu |
 
 Mieszkańcy są łączeni w gospodarstwa domowe (rozmiar 1 + Poisson, najwyżej 6) mieszkające w jednym
 punkcie. Budynek gospodarstwa losujemy proporcjonalnie do wagi budynku (bloki > domy).
+**Budynek jest w modelu punktem**: wszystkie jego gospodarstwa leżą w odległości kilku metrów od środka
+(rozrzut σ = 3 m, założenie zespołu). W bloku każdy ma więc wszystkich sąsiadów „w zasięgu 10 m”, co
+wzmacnia przekaz ustny (pkt 5) i ułatwia łączność między telefonami w tym samym budynku.
 Zgłoszenie pierwszej osoby z aplikacją w gospodarstwie obejmuje też domowników bez aplikacji, więc
 żadna osoba nie jest liczona w zgłoszeniach dwa razy.
 
@@ -75,7 +78,10 @@ Zgłoszenie pierwszej osoby z aplikacją w gospodarstwie obejmuje też domownik�
 | `population.evac_spread_m` | 20 m | ludzie w punkcie ewakuacji nie stoją w jednym miejscu | założenie zespołu |
 
 Kurierzy dzielą strefę zagrożenia na sąsiadujące sektory (wzdłuż głównej osi strefy) i objeżdżają
-węzły swojego sektora w losowej, stałej kolejności.
+węzły swojego sektora w losowej, stałej kolejności. Patrolują tylko strefę zagrożenia, punkt ewakuacji
+i hub – **nie resztę miasta**, dlatego zgłoszenia spoza strefy docierają do PCZK znacznie rzadziej
+(WYNIKI.md, tabela 2). Pojazdy kurierów jeżdżą po tej samej sieci co piesi. Kurierzy nikogo nie
+informują ustnie (konserwatywnie).
 
 ## 5. Zachowania mieszkańców
 
@@ -102,29 +108,40 @@ spoza strefy ze swojego domu.
 
 Ewakuację wywołuje **wyłącznie** zweryfikowany alert z działaniem „ewakuuj” (albo informacja ustna od
 osoby, która taki alert ma). Fałszywy alert nigdy nie zmienia zachowania agenta.
-Mieszkańcy spoza strefy zagrożenia nie ewakuują się.
+Alert z innym działaniem (np. „zostań w budynku”) nie uruchamia ewakuacji ani przekazu ustnego i nie
+blokuje późniejszego alertu „ewakuuj”. Zweryfikowane odwołanie alertu zatrzymuje przekaz ustny od
+telefonu, który je dostał, oraz reakcję jego właściciela, jeśli jeszcze nie ruszył; osoby już idące
+nie zawracają. Mieszkańcy spoza strefy zagrożenia nie ewakuują się.
 
 ### Przekaz ustny (liczony osobno)
 
 | Parametr | Wartość | Uzasadnienie | Źródło |
 |---|---|---|---|
-| `behavior.wom_enabled` | tak | domownik lub sąsiad z aplikacją mówi o alercie osobie bez aplikacji | założenie zespołu |
+| `behavior.wom_enabled` | tak | osoba z aplikacją mówi o alercie osobom bez aplikacji | założenie zespołu |
+| domownicy | od razu (przy najbliższym sprawdzeniu, co `wom_interval_s` = 10 s), jeśli są w zasięgu `wom_range_m` | kto dostał alert ewakuacyjny, mówi o nim rodzinie w mieszkaniu | założenie zespołu |
+| `behavior.wom_prob_per_min` | sąsiedzi z innych gospodarstw: 20% na minutę przebywania w zasięgu | nie każdy od razu puka do sąsiada | założenie zespołu |
 | `behavior.wom_range_m` | 10 m | to samo mieszkanie, klatka, sąsiednia posesja | założenie zespołu |
-| `behavior.wom_prob_per_min` | 20% na minutę przebywania w zasięgu | nie każdy od razu puka do sąsiada | założenie zespołu |
+| `behavior.wom_household_only` | nie | po włączeniu ustnie informują się tylko domownicy (wariant ostrożny) | założenie zespołu |
 
-Informować ustnie może tylko osoba z aplikacją i zweryfikowanym alertem; osoby poinformowane ustnie
-nie przekazują informacji dalej (konserwatywnie). Zasięg ustny raportujemy w osobnych kolumnach
-i nigdy nie doliczamy go do zasięgu aplikacji.
+Informować ustnie może tylko osoba z aplikacją i zweryfikowanym alertem „ewakuuj”; osoby poinformowane
+ustnie nie przekazują informacji dalej (konserwatywnie). Zasięg ustny raportujemy w osobnych kolumnach
+i nigdy nie doliczamy go do zasięgu aplikacji, a odsetek ewakuowanych rozbijamy na osoby z aplikacją
+i bez niej.
+
+**To najmocniejsze założenie po stronie ewakuacji.** Ponieważ budynek jest punktem, większość osób bez
+aplikacji ma kogoś z aplikacją w promieniu 10 m, a sąsiedzki przekaz ustny odpowiada za dużą część
+ewakuowanych. Dlatego przegląd parametrów liczy trzy warianty: bez przekazu ustnego, tylko domownicy,
+domownicy i sąsiedzi (WYNIKI.md, punkt 6).
 
 ## 6. Radio i kontakty
 
 | Parametr | Wartość | Uzasadnienie | Źródło |
 |---|---|---|---|
-| `radio.range_m` | 40 m | zabudowa, ściany, telefon w kieszeni | założenie zespołu; dokumentacja Google Nearby Connections mówi o zasięgu rzędu 100 m w dobrych warunkach |
+| `radio.range_m` | 40 m | zabudowa, ściany, telefon w kieszeni. To wartość środkowa, nie pesymistyczna: przez ściany zasięg BLE bywa mniejszy, dlatego liczby podajemy też dla 25 m | założenie zespołu; dokumentacja Google Nearby Connections mówi o zasięgu rzędu 100 m w dobrych warunkach |
 | `radio.setup_min_s` – `setup_max_s` | 3–8 s (rozkład jednostajny) | wykrycie, akceptacja i zestawienie połączenia | założenie zespołu |
 | `radio.scan_window_s` / `scan_period_s` | 10 s co 60 s | duty cycle telefonu mieszkańca (oszczędzanie baterii); kurier i hub skanują ciągle | założenie zespołu |
 | `radio.summary_vector_s` | 1 s | wymiana list identyfikatorów na początku kontaktu | założenie zespołu |
-| `radio.throughput_bps` | 2000 B/s | sam BLE, bez przełączenia na Wi-Fi | założenie zespołu (BLE GATT osiąga w praktyce kilka–kilkadziesiąt kB/s) |
+| `radio.throughput_bps` | 2000 B/s na każde połączenie (hub z sześcioma połączeniami przesyła 6 × 2000 B/s) | sam BLE, bez przełączenia na Wi-Fi | założenie zespołu (BLE GATT osiąga w praktyce kilka–kilkadziesiąt kB/s) |
 | `radio.max_session_s` | 30 s | po tym czasie połączenie jest zamykane | założenie zespołu |
 | `radio.max_links_resident` / `courier` / `hub` | 2 / 4 / 6 | jednoczesne połączenia jednego urządzenia | założenie zespołu (praktyczny limit Bluetooth to kilka połączeń) |
 | `radio.max_candidate_pairs` | 3000 na krok | ograniczenie obliczeniowe w tłumie; nadmiarowe pary czekają na kolejny krok | założenie zespołu |
@@ -132,11 +149,17 @@ i nigdy nie doliczamy go do zasięgu aplikacji.
 Reguły kontaktu:
 - kontakt mogą zacząć tylko dwa urządzenia z aplikacją, włączone, w zasięgu i **oba w oknie skanowania**;
 - początek okna skanowania jest losowany w każdym cyklu (przy stałych fazach część sąsiadów nigdy by się nie spotkała);
+  cykle wszystkich telefonów mają wspólną granicę co `scan_period_s`, a do rozpoczęcia zestawiania
+  wystarcza 1 s wspólnego okna. **Duty cycle wpływa na wynik tak samo mocno jak zasięg radia** –
+  wrażliwość pokazuje WYNIKI.md, punkt 6;
 - zestawione połączenie trwa do końca wymiany, utraty zasięgu albo `max_session_s`, także po końcu okna;
 - zerwanie kontaktu przerywa transfer: pakiety, które nie zdążyły przejść, nie są dostarczone;
 - urządzenia zestawiają połączenie tylko wtedy, gdy mają sobie coś do przekazania. Zakładamy, że wiedzą
   to ze skrótu zawartości bufora rozgłaszanego przy wykrywaniu. **Uproszczenie na korzyść Sztafety:**
-  jałowych połączeń (skrót różny, a nic do wysłania) i ich kosztu baterii nie modelujemy;
+  jałowych połączeń (skrót różny, a nic do wysłania) i ich kosztu baterii nie modelujemy. Recenzja
+  modelu sprawdziła to eksperymentem (2 seedy): gdyby telefony łączyły się zawsze, gdy ich zbiory
+  identyfikatorów się różnią, połączeń byłoby 5–11 razy więcej, a bateria po 6 h niższa o 1–2 punkty
+  procentowe; zasięg i czasy zmieniły się w granicach rozrzutu między seedami;
 - gdy w zasięgu jest więcej chętnych niż wolnych połączeń, pary są wybierane losowo.
 
 ## 7. Pakiety i routing
@@ -153,17 +176,27 @@ Reguły kontaktu:
 | `routing.unverified_forward_hops` | 0 | fałszywego alertu nie przekazujemy dalej | decyzja zespołu (patrz niżej) |
 | `routing.ack_batch_size` | 32 zgłoszenia na Ack | potwierdzenia zbiorcze | decyzja zespołu |
 | `routing.ack_delay_s` | 120 s | czas obsługi zgłoszenia w PCZK | założenie zespołu |
+| `routing.relay_enabled` | tak | wyłączenie daje wariant bazowy „bez Sztafety” (pkt 10) | – |
+| `routing.phone_relay` | tak | wyłączenie daje wariant „sami kurierzy”: telefony mieszkańców nie przekazują pakietów między sobą | – |
 
 - **Alert i Ack**: routing epidemiczny (Vahdat, Becker, „Epidemic Routing for Partially-Connected
   Ad Hoc Networks”, 2000) z limitem skoków i `expires_at`.
 - **Report**: binarny Spray-and-Wait; kurier i hub przyjmują zgłoszenie zawsze (custody).
-  Nadawca zachowuje swoją kopię do czasu otrzymania Acka, kurier oddaje zgłoszenia tylko w hubie.
+  Nadawca zachowuje swoją kopię do czasu otrzymania Acka; kurier oddaje zgłoszenia w hubie
+  (i innym kurierom), nigdy mieszkańcom.
 - **PCZK** deduplikuje zgłoszenia po `report_id` (zostaje najnowsza wersja) i potwierdza je zbiorczo
   w cyklu obsługi co `ack_delay_s`; jeden Ack obejmuje do `ack_batch_size` zgłoszeń.
 - **Priorytet przesyłania**: zweryfikowany alert > Ack > NEED_HELP > SAFE > treści niezweryfikowane.
 - **Bufor**: przy przepełnieniu usuwamy najpierw pakiety wygasłe, potem o najniższym priorytecie,
   potem najstarsze. Własnych niepotwierdzonych zgłoszeń urządzenie nie usuwa.
 - **Ack jako antypakiet**: urządzenie, które dostało Ack, usuwa kopie potwierdzonych zgłoszeń.
+  Każdy Ack rozchodzi się epidemicznie po całym mieście, choć dotyczy najwyżej 32 zgłaszających;
+  w scenariuszu demo to większość wszystkich transferów. Do optymalizacji w kolejnej wersji:
+  Ack kumulatywny z numerem sekwencyjnym (nowszy zastępuje starszy).
+- **Wygasanie**: pakiet po `expires_at` nie jest wysyłany (sprawdzane przy każdym transferze),
+  a z buforów jest usuwany co 10 s.
+- W scenariuszu 6-godzinnym limity bufora, limit skoków i czasy życia pakietów nie są osiągane,
+  więc przegląd parametrów ich nie sprawdza; robią to testy jednostkowe.
 - **Polityka wobec fałszywek**: telefon weryfikuje alert przy odbiorze. Niezweryfikowany alert jest
   pokazywany jako „niezweryfikowany”, nie trafia do bufora i nie jest przekazywany dalej. Powód:
   weryfikacja jest tania i działa offline, a przekazywanie zrobiłoby z uczciwych telefonów wzmacniacz
@@ -194,7 +227,9 @@ Reguły kontaktu:
 | `battery.link_pct_per_h` | 6%/h w czasie aktywnego połączenia | koszt transmisji | założenie zespołu |
 
 Telefon z baterią 0% wypada z sieci do końca symulacji (brak prądu = brak ładowania). Kurierzy i hub
-mają zasilanie (powerbank, agregat) i się nie rozładowują.
+mają zasilanie (powerbank, agregat) i się nie rozładowują. W scenariuszu 6-godzinnym przy tych stawkach
+nie rozładowuje się prawie żaden telefon, więc „średnia bateria na koniec” jest prostą konsekwencją
+założeń, a nie wynikiem symulacji.
 
 ## 10. Wariant bazowy „bez Sztafety”
 
@@ -205,6 +240,12 @@ Przekaz ustny działa tak samo w obu wariantach.
 
 **Zastrzeżenie:** wariant bazowy nie obejmuje syren, megafonów, radia ani chodzenia służb od drzwi do
 drzwi. Jest dolną granicą „bez żadnego kanału zastępczego”, a nie opisem tego, co faktycznie się wydarzyło.
+
+Wariant bazowy wyłącza jednocześnie telefony i kurierów, więc samo porównanie z nim nie mówi, co daje
+który mechanizm. Dlatego przegląd liczy też dwa warianty pośrednie (WYNIKI.md, punkt 5):
+- **same telefony** (`population.n_couriers = 0`): przekazują mieszkańcy, kurierów nie ma;
+- **sami kurierzy** (`routing.phone_relay = false`): kurier przekazuje alert mijanym telefonom i zbiera
+  zgłoszenia, ale telefony mieszkańców niczego nie podają dalej.
 
 ## 11. Czego model nie obejmuje
 

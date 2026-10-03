@@ -27,11 +27,17 @@ class MetricsRow:
     # ewakuacja mieszkańców strefy (procent)
     evac_started_zone: float
     evacuated_zone: float
+    evacuated_zone_app: float  # w tym osoby z aplikacją (dostały alert same)
+    evacuated_zone_wom: float  # w tym osoby bez aplikacji (dowiedziały się ustnie)
     # zgłoszenia
     reports_created: int
     reports_delivered: int
     need_help_created: int
     need_help_delivered: int
+    reports_zone_created: int  # zgłoszenia mieszkańców strefy zagrożenia
+    reports_zone_delivered: int
+    reports_outside_created: int  # zgłoszenia mieszkańców spoza strefy (tam kurierzy nie patrolują)
+    reports_outside_delivered: int
     delay_median_s: float
     delay_p90_s: float
     acks_received: int
@@ -93,6 +99,9 @@ class MetricsCollector:
         delivered = [tr for tr in tracks if not math.isnan(tr.delivered_t)]
         delays = np.array([tr.delivered_t - tr.created_t for tr in delivered], dtype=np.float64)
         acked = sum(1 for tr in delivered if not math.isnan(tr.acked_t))
+        zone_created = sum(1 for tr in tracks if ag.in_zone[tr.reporter])
+        zone_delivered = sum(1 for tr in delivered if ag.in_zone[tr.reporter])
+        evacuated = ~np.isnan(ag.evac_done_t) & self._zone
         res_app = self._res_app
         row = MetricsRow(
             t=t,
@@ -103,11 +112,17 @@ class MetricsCollector:
             wom_reach_all=_pct(float((oral_only & self._res).sum()), self._n_res),
             wom_reach_zone_all=_pct(float((oral_only & self._zone).sum()), self._n_zone),
             evac_started_zone=_pct(float((~np.isnan(ag.evac_start_t) & self._zone).sum()), self._n_zone),
-            evacuated_zone=_pct(float((~np.isnan(ag.evac_done_t) & self._zone).sum()), self._n_zone),
+            evacuated_zone=_pct(float(evacuated.sum()), self._n_zone),
+            evacuated_zone_app=_pct(float((evacuated & ag.has_app).sum()), self._n_zone),
+            evacuated_zone_wom=_pct(float((evacuated & ~ag.has_app).sum()), self._n_zone),
             reports_created=len(tracks),
             reports_delivered=len(delivered),
             need_help_created=sum(1 for tr in tracks if tr.kind == ReportKind.NEED_HELP),
             need_help_delivered=sum(1 for tr in delivered if tr.kind == ReportKind.NEED_HELP),
+            reports_zone_created=zone_created,
+            reports_zone_delivered=zone_delivered,
+            reports_outside_created=len(tracks) - zone_created,
+            reports_outside_delivered=len(delivered) - zone_delivered,
             delay_median_s=round(float(np.median(delays)), 1) if delays.size else 0.0,
             delay_p90_s=round(float(np.quantile(delays, 0.9)), 1) if delays.size else 0.0,
             acks_received=acked,
@@ -180,9 +195,15 @@ class MetricsCollector:
             "wom_reach_zone_all": last.wom_reach_zone_all,
             "evac_started_zone": last.evac_started_zone,
             "evacuated_zone": last.evacuated_zone,
+            "evacuated_zone_app": last.evacuated_zone_app,
+            "evacuated_zone_wom": last.evacuated_zone_wom,
             "reports_created": last.reports_created,
             "reports_delivered": last.reports_delivered,
             "reports_delivered_pct": _pct(last.reports_delivered, last.reports_created),
+            "reports_delivered_zone_pct": _pct(last.reports_zone_delivered, last.reports_zone_created),
+            "reports_delivered_outside_pct": _pct(
+                last.reports_outside_delivered, last.reports_outside_created
+            ),
             "reports_delivered_pct_1h": self._share_at(3600.0),
             "reports_delivered_pct_3h": self._share_at(10800.0),
             "need_help_created": last.need_help_created,
@@ -200,5 +221,6 @@ class MetricsCollector:
             "contacts_interrupted": self._radio.n_interrupted,
             "transfers_total": last.transfers_total,
             "bytes_total": last.bytes_total,
+            "ack_transfer_pct": _pct(self._router.transfers_by_kind[1], self._router.n_transfers),
             "packets_evicted": self._router.n_evicted,
         }

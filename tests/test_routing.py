@@ -56,7 +56,7 @@ def test_expired_alert_is_removed_and_not_forwarded() -> None:
     w.router.transfer(0, 1, p, 1.0)
     w.router.sweep(100.0)
     assert not w.router.have[:, p].any()
-    assert not w.router.can_send(1, 2, p)
+    assert not w.router.can_send(1, 2, p, 0.0)
     assert not w.router.need_exchange(*_pair(1, 2))[0]
 
 
@@ -71,7 +71,7 @@ def test_newer_seq_replaces_older_and_old_is_rejected_as_replay() -> None:
     assert w.router.alert_seq[1, 0] == 2
     # urządzenie 2 dostaje od razu seq 2; próba dosłania seq 1 (replay) jest odrzucana
     w.router.transfer(1, 2, p2, 7.0)
-    assert not w.router.can_send(1, 2, p1)
+    assert not w.router.can_send(1, 2, p1, 0.0)
     w.events.drain()
     w.router.transfer(1, 2, p1, 8.0)  # wymuszone z pominięciem summary vector
     assert not w.router.have[2, p1]
@@ -137,7 +137,7 @@ def test_spray_and_wait_halves_copies_and_stops_at_one() -> None:
     w.router.transfer(0, 2, p, 2.0)
     assert (w.router.copies[0, p], w.router.copies[2, p]) == (1, 1)
     # faza „wait”: z jedną kopią nie rozdajemy dalej zwykłym urządzeniom
-    assert not w.router.can_send(0, 3, p)
+    assert not w.router.can_send(0, 3, p, 0.0)
     assert not w.router.need_exchange(*_pair(2, 3))[0]
     w.router.transfer(1, 3, p, 3.0)
     assert w.router.copies[:, p].sum() == 4  # liczba kopii jest zachowana
@@ -160,7 +160,7 @@ def test_courier_always_accepts_and_hub_delivery_is_recorded_once() -> None:
     assert len(w.router.deliveries) == 1 and w.router.deliveries[0].carrier == 2
     assert not w.router.have[3, p]  # hub jest celem, nie przekaźnikiem
     # autor przy hubie nie dostarcza drugi raz tej samej wersji
-    assert not w.router.can_send(0, 3, p)
+    assert not w.router.can_send(0, 3, p, 0.0)
 
 
 def test_newer_report_version_replaces_older() -> None:
@@ -175,7 +175,7 @@ def test_newer_report_version_replaces_older() -> None:
     assert w.router.have[1, p2] and not w.router.have[1, p1]
     w.router.transfer(1, 2, p2, 20.0)
     assert track.delivered_version == 2 and track.kind == ReportKind.SAFE
-    assert not w.router.can_send(0, 2, p1)  # hub zna już nowszą wersję
+    assert not w.router.can_send(0, 2, p1, 0.0)  # hub zna już nowszą wersję
 
 
 def test_ack_reaches_reporter_and_acts_as_antipacket() -> None:

@@ -215,13 +215,15 @@ class Simulation:
             alert = router.packets[p]
             assert isinstance(alert, Alert)
             first = bool(np.isnan(ag.informed_t[agent]))
-            evacuate = alert.action == Action.EVACUATE and alert.msg_type != MsgType.CANCEL
-            if evacuate:
-                self.behavior.inform(agent, self.t, via_app=True)
-            elif first:
+            if first:
                 ag.informed_t[agent] = self.t
                 if ag.state[agent] == AgentState.UNINFORMED:
                     ag.state[agent] = int(AgentState.INFORMED)
+            if alert.msg_type == MsgType.CANCEL:
+                self.behavior.cancel(agent)
+            elif alert.action == Action.EVACUATE:
+                # tylko zweryfikowany alert „ewakuuj” uruchamia reakcję i przekaz ustny
+                self.behavior.inform(agent, self.t, via_app=True)
             if agent != int(router.origin[p]):
                 self.events.emit(
                     self.t,

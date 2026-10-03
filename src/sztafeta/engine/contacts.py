@@ -54,6 +54,7 @@ class ContactEngine:
         self._p = params.radio
         self._bat = params.battery
         self._relay = params.routing.relay_enabled
+        self._phone_relay = params.routing.phone_relay
         self._agents = agents
         self._router = router
         self._rng = rng
@@ -145,7 +146,7 @@ class ContactEngine:
                 p = int(plan_p[link.cursor])
                 rev = bool(link.plan_rev[link.cursor])
                 src, dst = (link.b, link.a) if rev else (link.a, link.b)
-                if not router.can_send(src, dst, p):
+                if not router.can_send(src, dst, p, t):
                     link.cursor += 1
                     continue
                 nbytes = int(size[p])
@@ -208,6 +209,18 @@ class ContactEngine:
             jj = jj[with_hub]
             if ii.size == 0:
                 return
+        elif not self._phone_relay:
+            # wariant „sami kurierzy”: telefony mieszkańców nie przekazują sobie pakietów nawzajem
+            custodian = self._router.custodian
+            with_custodian = custodian[ii] | custodian[jj]
+            ii = ii[with_custodian]
+            jj = jj[with_custodian]
+            if ii.size == 0:
+                return
+        # stała kolejność par przed jakimkolwiek losowaniem (wynik nie zależy od kolejności z cKDTree)
+        order = np.lexsort((jj, ii))
+        ii = ii[order]
+        jj = jj[order]
         if ii.size > self._p.max_candidate_pairs:
             pick = np.sort(self._rng.choice(ii.size, size=self._p.max_candidate_pairs, replace=False))
             ii = ii[pick]
@@ -219,8 +232,7 @@ class ContactEngine:
         jj = jj[useful]
         keys = ii * self._n + jj
         # kolejność par losowa (żeby niskie id nie miały pierwszeństwa), ale powtarzalna dla seeda
-        order = np.lexsort((jj, ii))
-        order = order[self._rng.permutation(order.size)]
+        order = self._rng.permutation(ii.size)
         setups = self._rng.uniform(self._p.setup_min_s, self._p.setup_max_s, size=order.size)
         n_links = self.n_links
         max_links = self.max_links

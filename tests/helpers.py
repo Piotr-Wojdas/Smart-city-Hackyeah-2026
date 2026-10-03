@@ -113,6 +113,7 @@ def make_world(
         battery=np.full(n, 100.0),
         informed_t=np.full(n, np.nan),
         wom_t=np.full(n, np.nan),
+        evac_order_t=np.full(n, np.nan),
         evac_start_t=np.full(n, np.nan),
         evac_done_t=np.full(n, np.nan),
     )

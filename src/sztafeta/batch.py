@@ -1,5 +1,9 @@
 """Przegląd parametrów: adopcja x zasięg x kurierzy x seedy, równolegle przez multiprocessing.
 
+Oprócz pełnej siatki liczone są warianty odniesienia przy ustawieniach domyślnych: bez Sztafety,
+same telefony (bez kurierów), sami kurierzy (bez przekazywania telefon–telefon) oraz warianty
+wrażliwości na założenia (przekaz ustny, duty cycle, czas zestawienia połączenia).
+
 Wynik: `results/batch/runs.csv` (wiersz na uruchomienie), `summary.csv` (mediana i rozrzut między
 seedami), wykresy w `plots/` oraz `docs/WYNIKI.md`. Wszystkie liczby to wyniki modelu.
 """
@@ -20,12 +24,26 @@ from sztafeta.runner import run_once
 
 RUNS_FILE = "runs.csv"
 SUMMARY_FILE = "summary.csv"
-KEYS = ["baseline", "adoption", "range_m", "couriers"]
+KEYS = ["variant", "adoption", "range_m", "couriers"]
+FULL = "full"
+
+# warianty liczone tylko przy ustawieniach odniesienia: (nazwa, nadpisania parametrów, wariant bazowy)
+REFERENCE_VARIANTS: tuple[tuple[str, tuple[str, ...], bool], ...] = (
+    ("baseline", (), True),
+    ("phones_only", ("population.n_couriers=0",), False),
+    ("couriers_only", ("routing.phone_relay=false",), False),
+    ("no_wom", ("behavior.wom_enabled=false",), False),
+    ("wom_household", ("behavior.wom_household_only=true",), False),
+    ("scan_5_60", ("radio.scan_window_s=5",), False),
+    ("scan_5_120", ("radio.scan_window_s=5", "radio.scan_period_s=120"), False),
+    ("setup_8_15", ("radio.setup_min_s=8", "radio.setup_max_s=15"), False),
+)
 
 # metryki agregowane między seedami (mediana, minimum, maksimum)
 METRICS = [
     "t50_app_s",
     "t90_app_s",
+    "t50_zone_app_s",
     "t90_zone_app_s",
     "alert_reach_app",
     "alert_reach_app_1h",
@@ -33,19 +51,41 @@ METRICS = [
     "alert_reach_all",
     "wom_reach_all",
     "evacuated_zone",
+    "evacuated_zone_app",
+    "evacuated_zone_wom",
     "reports_created",
     "reports_delivered_pct",
+    "reports_delivered_zone_pct",
+    "reports_delivered_outside_pct",
     "reports_delivered_pct_1h",
     "reports_delivered_pct_3h",
     "need_help_delivered_pct",
     "delay_median_s",
     "acks_received_pct",
+    "ack_transfer_pct",
     "fake_received_devices",
     "fake_verified_devices",
     "battery_mean",
+    "devices_off",
+    "packets_evicted",
     "bytes_total",
     "wall_s",
 ]
+
+
+@dataclass(frozen=True, slots=True)
+class Job:
+    """Jedno uruchomienie przeglądu (obiekt przekazywany do procesu roboczego)."""
+
+    preset: str
+    seed: int
+    overrides: tuple[str, ...]
+    baseline: bool
+    duration_s: float | None
+    variant: str
+    adoption: float
+    range_m: float
+    couriers: int
 
 
 @dataclass(slots=True)
@@ -61,41 +101,58 @@ class BatchSpec:
     baseline_adoption: float = 0.30
     baseline_range: float = 40.0
     baseline_couriers: int = 5
+    reference_variants: bool = True
 
-    def jobs(self) -> list[tuple[str, int, tuple[str, ...], bool, float | None, float, float, int]]:
-        out = []
+    def jobs(self) -> list[Job]:
+        out: list[Job] = []
         for adoption in self.adoption:
             for range_m in self.ranges:
                 for couriers in self.couriers:
                     for seed in self.seeds:
-                        out.append(self._job(seed, adoption, range_m, couriers, False))
-        # wariant bazowy „bez Sztafety” dla punktu odniesienia, te same seedy
-        for seed in self.seeds:
-            out.append(
-                self._job(seed, self.baseline_adoption, self.baseline_range, self.baseline_couriers, True)
-            )
+                        out.append(self._job(seed, adoption, range_m, couriers, FULL, (), False))
+        if self.reference_variants:
+            a, r, c = self.baseline_adoption, self.baseline_range, self.baseline_couriers
+            for name, extra, baseline in REFERENCE_VARIANTS:
+                for seed in self.seeds:
+                    out.append(self._job(seed, a, r, c, name, extra, baseline))
         return out
 
     def _job(
-        self, seed: int, adoption: float, range_m: float, couriers: int, baseline: bool
-    ) -> tuple[str, int, tuple[str, ...], bool, float | None, float, float, int]:
+        self,
+        seed: int,
+        adoption: float,
+        range_m: float,
+        couriers: int,
+        variant: str,
+        extra: tuple[str, ...],
+        baseline: bool,
+    ) -> Job:
+        # nadpisania wariantu idą na końcu, więc wygrywają z ustawieniami siatki (np. 0 kurierów)
         overrides = (
             f"behavior.adoption={adoption}",
             f"radio.range_m={range_m}",
             f"population.n_couriers={couriers}",
+            *extra,
         )
-        return (self.preset, seed, overrides, baseline, self.duration_s, adoption, range_m, couriers)
+        return Job(
+            self.preset, seed, overrides, baseline, self.duration_s, variant, adoption, range_m, couriers
+        )
 
 
-def _run_job(job: tuple[str, int, tuple[str, ...], bool, float | None, float, float, int]) -> dict[str, Any]:
+def _run_job(job: Job) -> dict[str, Any]:
     """Jedno uruchomienie w procesie roboczym (bez zapisu snapshotów)."""
-    preset, seed, overrides, baseline, duration, adoption, range_m, couriers = job
-    result = run_once(preset, seed, overrides, baseline, out_root=None, until=duration)
+    result = run_once(job.preset, job.seed, job.overrides, job.baseline, out_root=None, until=job.duration_s)
     row = dict(result.summary)
     row.update(
-        {"adoption": adoption, "range_m": range_m, "couriers": couriers, "wall_s": round(result.wall_s, 2)}
+        {
+            "variant": job.variant,
+            "adoption": job.adoption,
+            "range_m": job.range_m,
+            "couriers": job.couriers,
+            "wall_s": round(result.wall_s, 2),
+            "map_source": result.map_source,
+        }
     )
-    row["map_source"] = result.map_source
     return row
 
 

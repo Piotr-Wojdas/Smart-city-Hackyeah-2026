@@ -159,6 +159,14 @@ uv run pytest
 - Zachowania ludzi (czas reakcji, posłuszeństwo wobec alertu, zgłoszenia) to założenia zespołu,
   nie dane z badań.
 - Wariant bazowy „bez Sztafety” nie obejmuje syren, megafonów ani obchodu służb – jest dolną granicą.
+  Wyłącza też jednocześnie telefony i kurierów, dlatego [docs/WYNIKI.md](docs/WYNIKI.md) pokazuje osobno
+  warianty „same telefony” i „sami kurierzy”.
+- Duża część ewakuowanych to osoby bez aplikacji poinformowane ustnie przez domowników i sąsiadów.
+  Siła tego przekazu jest założeniem; wyniki bez niego i w wariancie „tylko domownicy” są w WYNIKI.md.
+- Kurierzy patrolują tylko strefę zagrożenia i punkt ewakuacji, więc zgłoszenia spoza strefy docierają
+  do PCZK znacznie rzadziej.
+- Duty cycle skanowania (10 s co 60 s) i zasięg radia wpływają na wynik podobnie mocno; żadnego z nich
+  nie zmierzyliśmy w terenie.
 - Tłumaczenia szablonów alertów na ukraiński, niemiecki i czeski są robocze.
 - Atakujący to tylko troll z fałszywym alertem; nie symulujemy zagłuszania ani ataków Sybil.
 

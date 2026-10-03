@@ -45,7 +45,7 @@ def _pick(values: list[float], preferred: float) -> float:
 
 def _relay(summary: pd.DataFrame, **fixed: float) -> pd.DataFrame:
     """Wiersze wariantu „Sztafeta” dla ustalonych wartości wybranych parametrów."""
-    rows = summary[~summary["baseline"].astype(bool)]
+    rows = summary[summary["variant"] == "full"]
     for key, value in fixed.items():
         rows = rows[rows[key] == value]
     return rows.sort_values(["adoption", "range_m", "couriers"])

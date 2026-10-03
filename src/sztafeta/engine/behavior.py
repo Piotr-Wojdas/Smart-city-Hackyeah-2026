@@ -127,12 +127,18 @@ class Behavior:
     # ------------------------------------------------------------------ wejścia z innych podsystemów
 
     def inform(self, agent: int, t: float, via_app: bool) -> None:
-        """Agent dowiedział się o ewakuacji: ze zweryfikowanego alertu (`via_app`) albo ustnie."""
+        """Agent dowiedział się o ewakuacji: ze zweryfikowanego alertu „ewakuuj” (`via_app`) albo ustnie.
+
+        O reakcji decyduje wyłącznie to, czy agent wiedział już o ewakuacji. Wcześniejszy alert
+        z innym działaniem (np. „zostań w budynku”) niczego tu nie blokuje ani nie uruchamia.
+        """
         ag = self._agents
-        first = np.isnan(ag.informed_t[agent]) and np.isnan(ag.wom_t[agent])
+        first = np.isnan(ag.evac_order_t[agent]) and np.isnan(ag.wom_t[agent])
         if via_app:
             if np.isnan(ag.informed_t[agent]):
                 ag.informed_t[agent] = t
+            if np.isnan(ag.evac_order_t[agent]):
+                ag.evac_order_t[agent] = t
         elif np.isnan(ag.wom_t[agent]):
             ag.wom_t[agent] = t
         if not first:
@@ -152,6 +158,14 @@ class Behavior:
             and self._rng.random() < self._p.p_safe_report_outside
         ):
             self._schedule(agent, t + float(self._rng.exponential(self._p.safe_report_delay_s)), _DUE_SAFE)
+
+    def cancel(self, agent: int) -> None:
+        """Telefon agenta dostał zweryfikowane odwołanie alertu: przestaje on namawiać innych do ewakuacji.
+
+        Kto jeszcze nie ruszył, zostaje; kto już idzie albo dotarł do punktu ewakuacji, nie zawraca.
+        """
+        self._agents.evac_order_t[agent] = np.nan
+        self.react_t[agent] = np.inf
 
     def schedule_blackout_needs(self, t: float) -> None:
         """Po awarii sieci część mieszkańców będzie potrzebować pomocy niezależnie od powodzi."""
@@ -300,21 +314,36 @@ class Behavior:
             self.next_walk_t[agent] = np.inf
 
     def _word_of_mouth(self, t: float) -> None:
-        """Osoba z aplikacją i zweryfikowanym alertem może ustnie poinformować sąsiada bez aplikacji."""
+        """Przekaz ustny: osoba z aplikacją i alertem „ewakuuj” informuje osoby bez aplikacji.
+
+        Domownik będący w zasięgu dowiaduje się od razu (rozmowa w mieszkaniu). Sąsiad z innego
+        gospodarstwa – z prawdopodobieństwem `wom_prob_per_min`, o ile nie włączono trybu
+        `wom_household_only`. Osoby poinformowane ustnie nie przekazują informacji dalej.
+        """
         ag = self._agents
         residents = ag.residents
-        src = np.flatnonzero(residents & ag.has_app & ~np.isnan(ag.informed_t) & (ag.battery > 0))
+        src = np.flatnonzero(residents & ag.has_app & ~np.isnan(ag.evac_order_t) & (ag.battery > 0))
         if src.size == 0:
             return
         dst = np.flatnonzero(residents & ~ag.has_app & np.isnan(ag.wom_t))
         if dst.size == 0:
             return
-        tree = cKDTree(self._mob.pos[src])
-        dist, _ = tree.query(self._mob.pos[dst], k=1, distance_upper_bound=self._p.wom_range_m)
-        exposed = dst[np.isfinite(dist)]
-        if exposed.size == 0:
-            return
-        told = exposed[self._rng.random(exposed.size) < self._wom_p]
-        for agent in told.tolist():
+        pos = self._mob.pos
+        # domownicy: jeden informujący na gospodarstwo wystarcza
+        teller = np.full(int(np.max(ag.household)) + 2, -1, dtype=np.int64)
+        teller[ag.household[src]] = src
+        mate = teller[ag.household[dst]]
+        has_mate = mate >= 0
+        near = np.zeros(dst.size, dtype=np.bool_)
+        delta = pos[dst[has_mate]] - pos[mate[has_mate]]
+        near[has_mate] = np.hypot(delta[:, 0], delta[:, 1]) <= self._p.wom_range_m
+        told = [dst[near]]
+        rest = dst[~near]
+        if not self._p.wom_household_only and rest.size:
+            tree = cKDTree(pos[src])
+            dist, _ = tree.query(pos[rest], k=1, distance_upper_bound=self._p.wom_range_m)
+            exposed = rest[np.isfinite(dist)]
+            told.append(exposed[self._rng.random(exposed.size) < self._wom_p])
+        for agent in np.sort(np.concatenate(told)).tolist():
             self.inform(agent, t, via_app=False)
             self._events.emit(t, EventType.WORD_OF_MOUTH, agent=agent)

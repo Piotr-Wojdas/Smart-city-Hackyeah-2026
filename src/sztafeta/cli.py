@@ -274,6 +274,7 @@ def batch(
     if quick:
         spec.adoption, spec.ranges, spec.couriers, spec.seeds = [0.10, 0.30], [40.0], [5], [1, 2]
         spec.duration_s = until or 5400.0
+        spec.reference_variants = False
     if not (spec.adoption and spec.ranges and spec.couriers and spec.seeds):
         typer.echo(
             "Błąd: każda lista (adopcja, zasięg, kurierzy, seedy) musi mieć co najmniej jedną wartość",
