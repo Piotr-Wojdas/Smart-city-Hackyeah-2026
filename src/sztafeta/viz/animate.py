@@ -361,9 +361,26 @@ class MapAnimation:
         ready = self._alert_at[peer] <= self._got_start - _CLOSE_LEAD_S
         # przerywaną linię rysujemy od chwili, gdy połączenie trwa i nadawca ma już alert
         self._link_from = np.maximum(self._got_start, self._alert_at[peer])
+
+        def as_dot(who: NDArray[np.int64], when: NDArray[np.float64]) -> NDArray[np.bool_]:
+            """Czy w danej chwili osoba jest rysowana jako kropka telefonu.
+
+            Ewakuujący się to trójkąt, a kto dotarł do punktu ewakuacji, nie jest rysowany wcale.
+            """
+            frames = np.clip(np.searchsorted(run.t, when, side="right") - 1, 0, run.t.size - 1)
+            state = run.state[frames, who]
+            shown: NDArray[np.bool_] = (state != _STATE_EVACUATING) & (state != _STATE_SAFE)
+            return shown
+
+        still &= as_dot(peer, self._link_from) & as_dot(peer, self._got_t)
+        still &= as_dot(self._got_agent, self._got_t) & as_dot(self._got_agent, self._got_t + _CLOSE_TAIL_S)
+        # historia filmu: najpierw wyjazd kurierów, potem zbliżenie na telefony
+        dispatch_t = next((float(e["t"]) for e in run.events if e["type"] == "courier_dispatched"), 0.0)
+        later = self._got_start - _CLOSE_LEAD_S >= dispatch_t
         chain: tuple[int, ...] | None = None
         attempts: tuple[tuple[NDArray[np.bool_], NDArray[np.bool_] | None, bool], ...] = (
-            (visible & still, ready, True),
+            (visible & still, ready & later, True),
+            (visible & still, later, True),
             (visible & still, None, True),
             (visible, None, False),
         )

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import math
 import shutil
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -57,9 +58,17 @@ def _pct_cell(row: pd.Series[Any], metric: str) -> str:
     return f"{float(med):.1f}% ({float(row[f'{metric}_min']):.1f}–{float(row[f'{metric}_max']):.1f})"
 
 
+def _number(value: float, digits: int = 0) -> str:
+    """Liczba do zdania; wartość poniżej 100 nigdy nie jest zaokrąglana w górę do 100."""
+    text = f"{value:.{digits}f}"
+    if value < 100.0 and float(text) >= 100.0:
+        return f"{math.floor(value * 10.0) / 10.0:.1f}"
+    return text
+
+
 def _med(row: pd.Series[Any], metric: str, digits: int = 0) -> str:
     value = row[f"{metric}_med"]
-    return "–" if value is None or pd.isna(value) else f"{float(value):.{digits}f}"
+    return "–" if value is None or pd.isna(value) else _number(float(value), digits)
 
 
 def preset_settings(preset: str) -> dict[str, Any]:
@@ -193,7 +202,7 @@ def write_wyniki(
     if city:
         add(
             "- alert i ewakuacja dotyczą **całego miasta** (scenariusz bez wydzielonej strefy zagrożenia); "
-            "kurierzy patrolują ulice przy wszystkich budynkach"
+            "kurierzy patrolują ulice przy wszystkich zamieszkanych budynkach"
         )
     else:
         add(
@@ -231,8 +240,8 @@ def write_wyniki(
         text = (
             f"1. W modelu ({setup}) zweryfikowany alert po "
             f"{hours:.0f} h ma **{_med(ref, 'alert_reach_app')}% "
-            f"telefonów z aplikacją** (rozrzut {float(ref['alert_reach_app_min']):.0f}–"
-            f"{float(ref['alert_reach_app_max']):.0f}%){in_zone}. Połowa telefonów ma go po "
+            f"telefonów z aplikacją** (rozrzut {_number(float(ref['alert_reach_app_min']))}–"
+            f"{_number(float(ref['alert_reach_app_max']))}%){in_zone}. Połowa telefonów ma go po "
             f"{_time_cell(ref, 't50_app_s', seeds)} od wydania."
         )
         if short is not None:

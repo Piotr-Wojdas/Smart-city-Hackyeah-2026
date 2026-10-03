@@ -16,7 +16,7 @@ from sztafeta.batch import (
     run_batch,
     write_outputs,
 )
-from sztafeta.wyniki import adoption_threshold
+from sztafeta.wyniki import _number, adoption_threshold
 
 N_VARIANTS = len(REFERENCE_VARIANTS)
 
@@ -174,3 +174,10 @@ def test_list_parsing() -> None:
     assert percent_list([5.0, 30.0]) == [0.05, 0.3]
     with pytest.raises(ValueError, match="could not convert"):
         parse_list("5,x", float)
+
+
+def test_results_never_round_a_value_below_100_up_to_100() -> None:
+    assert _number(83.7) == "84" and _number(2.46, 1) == "2.5"
+    assert _number(100.0) == "100"
+    assert _number(99.7) == "99.7" and _number(99.97) == "99.9" and _number(99.96, 1) == "99.9"
+    assert _number(99.4) == "99"

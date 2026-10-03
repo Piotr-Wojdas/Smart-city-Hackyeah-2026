@@ -44,7 +44,7 @@ uv run sztafeta run --preset flood-stronie --seed 42 --baseline
 # wykresy do slajdów i karta wyników (PNG 16:9); wariant bazowy jest wykrywany automatycznie
 uv run sztafeta charts results/flood-stronie_s42
 
-# animacja mapy (MP4 1920x1080, ok. 45 s, bez zatrzymań): awaria sieci, kurierzy rozchodzą się po
+# animacja mapy (MP4 1920x1080, ok. 30 s, bez zatrzymań): awaria sieci, kurierzy rozchodzą się po
 # mieście, zbliżenie na osiedle, w którym telefony łączą się i przekazują sobie alert, ewakuacja miasta.
 # --no-closeup pomija zbliżenie, --step zmienia tempo, --t-to wydłuża film, --lang en daje napisy angielskie
 uv run sztafeta animate results/flood-stronie_s42
