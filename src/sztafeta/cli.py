@@ -83,8 +83,8 @@ def run(
         f"potwierdzenia u zgłaszających: {s['acks_received']}"
     )
     typer.echo(
-        f"Fałszywy alert: dostało {s['fake_received_devices']} urządzeń, "
-        f"uznało za prawdziwy: {s['fake_verified_devices']}"
+        f"Fałszywy alert: urządzenia, które go dostały: {s['fake_received_devices']}, "
+        f"które uznały go za prawdziwy: {s['fake_verified_devices']}"
     )
     megabytes = s["bytes_total"] / 1e6
     typer.echo(f"Kontakty: {s['contacts_total']} · transfery: {s['transfers_total']} · {megabytes:.2f} MB")

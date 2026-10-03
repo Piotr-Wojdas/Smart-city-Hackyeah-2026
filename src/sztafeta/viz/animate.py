@@ -24,7 +24,7 @@ from numpy.typing import NDArray
 
 from sztafeta.io.reader import RunData, load_run
 from sztafeta.viz import style
-from sztafeta.viz.labels import elapsed, tr
+from sztafeta.viz.labels import elapsed, people, tr
 
 _STORY_EVENTS = {
     "network_down",
@@ -460,8 +460,8 @@ class MapAnimation:
         self._courier_sc.set_offsets(xy[self._courier])
         self._troll_sc.set_offsets(xy[self._troll])
         n_safe = int((self._resident & (state == _STATE_SAFE)).sum())
-        people = tr(self.lang, "people", n=n_safe)
-        self._evac_label.set_text(f"{self._evac_name} · {people}" if n_safe else self._evac_name)
+        crowd = people(self.lang, n_safe)
+        self._evac_label.set_text(f"{self._evac_name} · {crowd}" if n_safe else self._evac_name)
 
         fresh = self._got_agent[(self._got_t <= t) & (self._got_t > t - _RING_S)]
         self._ring_sc.set_offsets(xy[fresh])

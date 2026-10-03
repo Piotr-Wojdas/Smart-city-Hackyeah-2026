@@ -162,3 +162,18 @@ def test_timeline_in_params_uses_action_values(runs: tuple[Path, Path]) -> None:
     kinds = [act["kind"] for act in meta["scenario"]["timeline"]]
     assert "issue_alert" in kinds and "troll_broadcast" in kinds
     assert meta["scenario"]["timeline"][1]["hazard"] == "FLOOD"
+
+
+def test_polish_plural_of_people() -> None:
+    from sztafeta.viz.labels import people
+
+    assert [people("pl", n) for n in (1, 2, 5, 12, 22, 104, 111)] == [
+        "1 osoba",
+        "2 osoby",
+        "5 osób",
+        "12 osób",
+        "22 osoby",
+        "104 osoby",
+        "111 osób",
+    ]
+    assert people("en", 1) == "1 person" and people("en", 7) == "7 people"

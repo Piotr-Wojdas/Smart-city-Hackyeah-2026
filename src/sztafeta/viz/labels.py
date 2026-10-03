@@ -12,7 +12,6 @@ _PL: dict[str, str] = {
     "before_outage": "przed awarią sieci · czas modelu",
     "zone": "Strefa zagrożenia",
     "scale": "{m} m",
-    "people": "{n} osób",
     "tile_alert": "Zweryfikowany alert w aplikacji",
     "tile_alert_value": "{pct:.0f}% telefonów",
     "tile_evac": "Ewakuowani ze strefy zagrożenia",
@@ -148,7 +147,7 @@ _PL: dict[str, str] = {
     "need_no_app": "potrzebuje pomocy, bez aplikacji",
     "just_received": "właśnie odebrał alert",
     "rejected_fake": "odrzucił fałszywy alert",
-    "tile_fake_sub": "dostało go i odrzuciło: {received} urządzeń",
+    "tile_fake_sub": "liczba urządzeń, które go odrzuciły: {received}",
     "ev_delivered_first": "Pierwsze zgłoszenie w PCZK",
     "ev_summary": "Bilans: {reach:.0f}% z alertem, {delivered}/{created} zgłoszeń",
     "evac_sub_vs": (
@@ -163,6 +162,9 @@ _PL: dict[str, str] = {
     "card_delay": "mediana czasu od zgłoszenia do PCZK",
     "card_delay_note": "90% zgłoszeń w ciągu {p90}",
     "with_range": "{med} ({lo:.0f}–{hi:.0f}%)",
+    "people_one": "{n} osoba",
+    "people_few": "{n} osoby",
+    "people_many": "{n} osób",
     "hours": "h",
     "minutes": "min",
 }
@@ -177,7 +179,6 @@ _EN: dict[str, str] = {
     "before_outage": "before network outage · model time",
     "zone": "Hazard zone",
     "scale": "{m} m",
-    "people": "{n} people",
     "tile_alert": "Verified alert in the app",
     "tile_alert_value": "{pct:.0f}% of phones",
     "tile_evac": "Evacuated from the hazard zone",
@@ -308,7 +309,7 @@ _EN: dict[str, str] = {
     "need_no_app": "needs help, has no app",
     "just_received": "has just received the alert",
     "rejected_fake": "rejected the fake alert",
-    "tile_fake_sub": "received and rejected it: {received} devices",
+    "tile_fake_sub": "devices that rejected it: {received}",
     "ev_delivered_first": "First report at the crisis centre",
     "ev_summary": "Total: {reach:.0f}% alerted, {delivered}/{created} reports",
     "evac_sub_vs": (
@@ -322,6 +323,9 @@ _EN: dict[str, str] = {
     "card_delay": "median time from report to the crisis centre",
     "card_delay_note": "90% of reports within {p90}",
     "with_range": "{med} ({lo:.0f}–{hi:.0f}%)",
+    "people_one": "{n} person",
+    "people_few": "{n} people",
+    "people_many": "{n} people",
     "hours": "h",
     "minutes": "min",
 }
@@ -343,3 +347,14 @@ def elapsed(lang: str, seconds: float) -> str:
     if hours:
         return f"{hours} {tr(lang, 'hours')} {minutes:02d} {tr(lang, 'minutes')}"
     return f"{minutes} {tr(lang, 'minutes')}"
+
+
+def people(lang: str, n: int) -> str:
+    """„1 osoba”, „3 osoby”, „12 osób” – z polską odmianą liczebnika."""
+    if n == 1:
+        key = "people_one"
+    elif n % 10 in (2, 3, 4) and n % 100 not in (12, 13, 14):
+        key = "people_few"
+    else:
+        key = "people_many"
+    return tr(lang, key, n=n)
