@@ -154,7 +154,7 @@ def test_story_tells_outage_couriers_relay_and_evacuation(run_dir: Path) -> None
 def test_storyboard_runs_smoothly_and_inserts_closeup() -> None:
     from sztafeta.viz.animate import Closeup, Shot, storyboard
 
-    close = Closeup(0.0, 0.0, 1500.0, 1600.0, 6)
+    close = Closeup(0.0, 0.0, 75.0, 1500.0, 1600.0, (0, 1, 2))
     shots = storyboard(7200.0, close, fps=10, step_s=12.0)
     times = [s.t for s in shots]
     assert times == sorted(times)  # czas nigdy się nie cofa
@@ -180,22 +180,39 @@ def test_storyboard_runs_smoothly_and_inserts_closeup() -> None:
     assert storyboard(100.0, None, 10, 12.0, t_from=500.0) == []
 
 
-def test_closeup_picks_earliest_dense_burst_of_handovers() -> None:
-    import numpy as np
+def test_closeup_shows_a_chain_of_three_phone_to_phone_handovers() -> None:
+    from sztafeta.viz.animate import pick_chain
 
-    from sztafeta.viz.animate import pick_closeup
-
-    # dwie serie przekazań: wcześniejsza (6 w jednym miejscu) i późniejsza, gęstsza (8 gdzie indziej)
-    t = np.array([100.0 + 5 * k for k in range(6)] + [900.0 + 5 * k for k in range(8)] + [3000.0])
-    xy = np.array(
-        [[10.0 * k, 0.0] for k in range(6)] + [[2000.0 + 10 * k, 500.0] for k in range(8)] + [[9e3, 9e3]]
-    )
+    # telefony 0..6; przekazania (nadawca -> odbiorca, czas):
+    # wczesny łańcuch 0->1->2->3 trwa 300 s (za długi), późniejszy 3->4->5->6 trwa 40 s
+    peer = np.array([0, 1, 2, 3, 4, 5, 9])
+    agent = np.array([1, 2, 3, 4, 5, 6, 8])
+    t = np.array([100.0, 250.0, 400.0, 1000.0, 1020.0, 1040.0, 50.0])
     visible = np.ones(t.size, dtype=bool)
-    close = pick_closeup(t, xy, visible)
-    assert close is not None
-    assert close.t0 == 88.0 and close.handovers == 6  # wcześniejsza seria wystarcza (>= 60% najgęstszej)
-    assert abs(close.cx - 25.0) < 1e-9 and close.cy == 0.0
-    visible[:6] = False  # np. przekazania w obrębie jednego budynku
-    later = pick_closeup(t, xy, visible)
-    assert later is not None and later.handovers == 8 and later.cx > 2000.0
-    assert pick_closeup(t[:3], xy[:3], np.ones(3, dtype=bool)) is None  # za mało, żeby było co pokazać
+    chain = pick_chain(t, agent, peer, visible)
+    assert chain == (3, 4, 5)  # najwcześniejszy łańcuch mieszczący się w limicie czasu
+    assert [int(agent[k]) for k in chain[:-1]] == [int(peer[k]) for k in chain[1:]]  # odbiorca podaje dalej
+    assert pick_chain(t, agent, peer, visible, max_duration=20.0) == (3, 4, 5)  # nic w limicie: najkrótszy
+    visible[4] = False  # np. przekazanie w obrębie jednego budynku albo przez kuriera
+    assert pick_chain(t, agent, peer, visible) == (0, 1, 2)
+    visible[1] = False
+    assert pick_chain(t, agent, peer, visible) is None  # nie ma już żadnego łańcucha trzech przekazań
+
+
+def test_closeup_of_real_run_draws_exactly_three_handovers(run_dir: Path) -> None:
+    from sztafeta.io.reader import load_run
+    from sztafeta.viz.animate import _EVENTS, MapAnimation
+
+    anim = MapAnimation(load_run(run_dir, _EVENTS), dpi=40)
+    close = anim.closeup
+    assert close is not None and len(close.ids) == 3
+    assert int(anim._in_close.sum()) == 3
+    times = anim._got_t[list(close.ids)]
+    assert list(times) == sorted(times)
+    assert close.t0 < times[0] and times[-1] < close.t1 <= times[-1] + 6.0
+    # każde z trzech przekazań mieści się w kadrze i ma długość najwyżej zasięgu radia
+    x0, x1, y0, y1 = anim._close
+    seg = anim._hand_seg[list(close.ids)]
+    assert (seg[..., 0] > x0).all() and (seg[..., 0] < x1).all()
+    assert (seg[..., 1] > y0).all() and (seg[..., 1] < y1).all()
+    assert (np.hypot(*(seg[:, 1] - seg[:, 0]).T) <= 40.0 + 1e-6).all()

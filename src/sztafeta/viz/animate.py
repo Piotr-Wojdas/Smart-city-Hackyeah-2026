@@ -55,8 +55,12 @@ _PANEL_BOX = (0.698, 0.0, 0.302, 1.0)
 _STORY_LINES = 8
 _END_SHARE = 0.9  # film kończy się, gdy do punktu ewakuacji dotarło 90% tych, którzy tam dotrą
 _END_TAIL_S = 300.0  # tyle czasu modelu film trwa jeszcze po ostatnim wpisie narracji
-_CLOSE_HALF_WIDTH_M = 130.0
-_CLOSE_WINDOW_S = 100.0
+_CLOSE_MIN_HALF_WIDTH_M = 75.0  # zbliżenie nie jest ciaśniejsze niż 150 m szerokości
+_CLOSE_MARGIN_M = 35.0
+_CLOSE_HANDOVERS = 3  # tyle przekazań z telefonu na telefon pokazuje zbliżenie
+_CLOSE_MAX_CHAIN_S = 90.0  # dłuższy łańcuch dałby za długie zbliżenie
+_CLOSE_LEAD_S = 3.0  # zapas przed pierwszym połączeniem
+_CLOSE_TAIL_S = 5.0  # i po ostatnim przekazaniu
 _CLOSE_STEP_S = 0.5
 _PACKET_TRAVEL_S = 3.0  # przez tyle sekund przed odbiorem widać „pakiet” lecący do odbiorcy
 _CLOSE_MIN_LINK_M = 12.0  # krótszych przekazań (ten sam budynek) nie byłoby widać jako linii
@@ -73,13 +77,14 @@ class Shot:
 
 @dataclass(frozen=True, slots=True)
 class Closeup:
-    """Miejsce i czas zbliżenia: tam, gdzie w krótkim czasie najwięcej telefonów przekazało sobie alert."""
+    """Miejsce, czas i przekazania pokazywane w zbliżeniu: łańcuch telefonów podających sobie alert."""
 
     cx: float
     cy: float
+    half_w: float
     t0: float
     t1: float
-    handovers: int
+    ids: tuple[int, ...]  # indeksy przekazań (w tablicach `_got_*`), które zbliżenie rysuje
 
 
 def story_end(run: RunData) -> float:
@@ -133,37 +138,41 @@ def build_story(run: RunData, lang: str, end_t: float) -> list[tuple[float, str]
     return story
 
 
-def pick_closeup(
+def pick_chain(
     got_t: NDArray[np.float64],
-    receiver_xy: NDArray[np.float64],
+    got_agent: NDArray[np.int64],
+    got_peer: NDArray[np.int64],
     visible: NDArray[np.bool_],
-    radius: float = 110.0,
-    window: float = _CLOSE_WINDOW_S,
-) -> Closeup | None:
-    """Wybiera osiedle i chwilę, w której telefony w krótkim czasie przekazały sobie alert wiele razy.
+    max_duration: float = _CLOSE_MAX_CHAIN_S,
+) -> tuple[int, ...] | None:
+    """Wybiera łańcuch trzech przekazań A -> B -> C -> D: każdy odbiorca podaje alert dalej.
 
-    `visible` wskazuje przekazania między telefonami mieszkańców na odległość, którą widać na mapie
-    (bez huba, kurierów i par z jednego budynku). Bierzemy najwcześniejszą serię co najmniej w 60%
-    tak gęstą jak najgęstsza, żeby zbliżenie pojawiło się na początku filmu. Zwraca None, gdy
-    przekazań było za mało, żeby było co pokazać.
+    `visible` wskazuje przekazania między telefonami mieszkańców na odległość widoczną na mapie.
+    Bierzemy najwcześniejszy łańcuch trwający najwyżej `max_duration` (żeby zbliżenie było krótkie
+    i pojawiło się na początku filmu); gdy takiego nie ma – najkrótszy. Zwraca None, gdy w przebiegu
+    nie było żadnego łańcucha.
     """
     idx = np.flatnonzero(visible)
-    if idx.size < 4:
-        return None
-    t = got_t[idx]
-    xy = receiver_xy[idx]
-    dt = t[None, :] - t[:, None]
-    dist = np.hypot(xy[None, :, 0] - xy[:, None, 0], xy[None, :, 1] - xy[:, None, 1])
-    members = (dt >= 0.0) & (dt <= window - 20.0) & (dist <= radius)
-    counts = members.sum(axis=1)
-    top = int(np.max(counts))
-    if top < 4:
-        return None
-    enough = np.flatnonzero(counts >= max(4, int(0.6 * top)))
-    best = int(enough[np.argmin(t[enough])])
-    centre = xy[members[best]].mean(axis=0)
-    t0 = float(t[best]) - 12.0
-    return Closeup(float(centre[0]), float(centre[1]), t0, t0 + window, int(counts[best]))
+    by_sender: dict[int, list[int]] = {}
+    for i in idx.tolist():
+        by_sender.setdefault(int(got_peer[i]), []).append(i)
+    best: tuple[float, float, tuple[int, ...]] | None = None
+    shortest: tuple[float, float, tuple[int, ...]] | None = None
+    for i in idx.tolist():
+        for j in by_sender.get(int(got_agent[i]), []):
+            if got_t[j] <= got_t[i]:
+                continue
+            for k in by_sender.get(int(got_agent[j]), []):
+                if got_t[k] <= got_t[j]:
+                    continue
+                duration = float(got_t[k] - got_t[i])
+                key = (float(got_t[i]), duration, (i, j, k))
+                if duration <= max_duration and (best is None or key < best):
+                    best = key
+                if shortest is None or (duration, float(got_t[i])) < (shortest[1], shortest[0]):
+                    shortest = key
+    chosen = best if best is not None else shortest
+    return None if chosen is None else chosen[2]
 
 
 def storyboard(
@@ -272,7 +281,12 @@ class MapAnimation:
         link_m = np.hypot(recv_xy[:, 0] - send_xy[:, 0], recv_xy[:, 1] - send_xy[:, 1])
         # linia przekazania łączy miejsca z chwili przekazania: nadawca w ruchu nie „ciągnie” jej za sobą
         self._hand_seg: NDArray[np.float64] = np.stack([send_xy, recv_xy], axis=1)
-        self.closeup = pick_closeup(self._got_t, recv_xy, between_phones & (link_m >= _CLOSE_MIN_LINK_M))
+        chain = pick_chain(
+            self._got_t,
+            self._got_agent,
+            self._got_peer,
+            between_phones & (link_m >= _CLOSE_MIN_LINK_M),
+        )
 
         box_ratio = (_MAP_BOX[2] * 16.0) / (_MAP_BOX[3] * 9.0)
         self._city = _map_limits(self._view_bbox(home), box_ratio)
@@ -280,26 +294,42 @@ class MapAnimation:
         # początek połączenia, którym przyszedł alert (nan = nieznany);
         # w zbliżeniu rysujemy je przerywaną linią
         self._got_start = np.full(self._got_t.size, np.nan)
-        if self.closeup is not None:
-            c = self.closeup
-            w = _CLOSE_HALF_WIDTH_M
-            h = w / box_ratio
-            self._close = (c.cx - w, c.cx + w, c.cy - h, c.cy + h)
-            starts: dict[tuple[int, int], list[tuple[float, float]]] = {}
+        self._in_close = np.zeros(self._got_t.size, dtype=np.bool_)
+        self.closeup: Closeup | None = None
+        if chain is not None:
+            ids = np.asarray(chain, dtype=np.int64)
+            self._in_close[ids] = True
+            pairs = {frozenset((int(self._got_agent[k]), int(self._got_peer[k]))): int(k) for k in ids}
             for e in run.events:
-                if e["type"] != "contact" or float(e["t"]) < c.t0 - 5.0 or float(e["data"]["start"]) > c.t1:
+                if e["type"] != "contact":
                     continue
-                pair = (min(int(e["agent"]), int(e["peer"])), max(int(e["agent"]), int(e["peer"])))
-                starts.setdefault(pair, []).append((float(e["data"]["start"]), float(e["t"])))
-            for k in np.flatnonzero(has_peer & (self._got_t >= c.t0) & (self._got_t <= c.t1 + 5.0)):
-                pair = (
-                    min(int(self._got_agent[k]), int(self._got_peer[k])),
-                    max(int(self._got_agent[k]), int(self._got_peer[k])),
-                )
-                for begin, end in starts.get(pair, []):
-                    if begin <= self._got_t[k] <= end + 1.0:
-                        self._got_start[k] = begin
-                        break
+                k = pairs.get(frozenset((int(e["agent"]), int(e["peer"]))))
+                begin = float(e["data"]["start"]) if k is not None else 0.0
+                if k is not None and begin <= self._got_t[k] <= float(e["t"]) + 1.0:
+                    self._got_start[k] = begin
+            first = int(ids[0])
+            lead = (
+                self._got_start[first] if not np.isnan(self._got_start[first]) else self._got_t[first] - 6.0
+            )
+            pts = self._hand_seg[ids].reshape(-1, 2)
+            lo = pts.min(axis=0)
+            hi = pts.max(axis=0)
+            half_w = max(
+                _CLOSE_MIN_HALF_WIDTH_M,
+                0.5 * float(hi[0] - lo[0]) + _CLOSE_MARGIN_M,
+                (0.5 * float(hi[1] - lo[1]) + _CLOSE_MARGIN_M) * box_ratio,
+            )
+            self.closeup = Closeup(
+                cx=0.5 * float(lo[0] + hi[0]),
+                cy=0.5 * float(lo[1] + hi[1]),
+                half_w=half_w,
+                t0=float(lead) - _CLOSE_LEAD_S,
+                t1=float(self._got_t[ids[-1]]) + _CLOSE_TAIL_S,
+                ids=tuple(int(k) for k in ids),
+            )
+            c = self.closeup
+            half_h = c.half_w / box_ratio
+            self._close = (c.cx - c.half_w, c.cx + c.half_w, c.cy - half_h, c.cy + half_h)
 
         self._build_map()
         self._build_legend()
@@ -587,10 +617,10 @@ class MapAnimation:
         # przekazania alertu: linia nadawca -> odbiorca i pierścień u odbiorcy
         close = z > 0.5 and self.closeup is not None
         age = t - self._got_t
-        if close and self.closeup is not None:
-            # w zbliżeniu linie zostają do końca: widać rosnący łańcuch telefonów
-            recent = (age >= 0.0) & (self._got_t >= self.closeup.t0 - 60.0)
-            fresh = (age >= 0.0) & (age < 8.0)
+        if close:
+            # w zbliżeniu rysujemy tylko wybrany łańcuch; jego linie zostają do końca
+            recent = self._in_close & (age >= 0.0)
+            fresh = recent & (age < 8.0)
             fade = np.ones(int((recent & (self._got_peer >= 0)).sum()))
         else:
             keep = 90.0
@@ -607,7 +637,7 @@ class MapAnimation:
         # tylko w zbliżeniu: połączenie w trakcie zestawiania i „pakiet” lecący do odbiorcy tuż przed odbiorem
         if close:
             ahead = self._got_t - t
-            linking = (self._got_start <= t) & (ahead > 0.0)
+            linking = self._in_close & (self._got_start <= t) & (ahead > 0.0)
             self._contact_lines.set_segments(list(self._hand_seg[linking]))
             flying = linking & (ahead <= _PACKET_TRAVEL_S)
             src = self._hand_seg[flying, 0]
