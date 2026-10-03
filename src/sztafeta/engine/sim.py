@@ -33,10 +33,12 @@ from sztafeta.engine.model import (
     Alert,
     Forgery,
     Hazard,
+    HelpCategory,
     Lang,
     MsgType,
     Params,
     Report,
+    ReportKind,
     Role,
     Scenario,
     ScheduledAction,
@@ -149,6 +151,8 @@ class Simulation:
         for agent in self.couriers.at_hub_events:
             self.events.emit(t, EventType.COURIER_AT_HUB, agent=agent)
         self.behavior.step(t, arrived)
+        for rq in self.behavior.requests:
+            self.submit_report(rq.agent, rq.kind, rq.category, rq.urgency, rq.sensitive_len)
         self.radio.step(t, step, self.mobility.pos)
         self._after_radio()
         if t >= self._next_sweep_t:
@@ -233,6 +237,7 @@ class Simulation:
         """Awaria sieci komórkowej – od tej chwili działa tylko kanał telefon–telefon."""
         self.network_down_t = self.t
         self.events.emit(self.t, EventType.NETWORK_DOWN, label=label)
+        self.behavior.schedule_blackout_needs(self.t)
 
     def note(self, label: str) -> None:
         """Wpis narracyjny do strumienia zdarzeń (np. napis w animacji)."""
@@ -244,6 +249,25 @@ class Simulation:
         for agent in started:
             self.events.emit(self.t, EventType.COURIER_DISPATCHED, agent=agent)
         return started
+
+    def submit_report(
+        self,
+        agent: int,
+        kind: ReportKind,
+        category: HelpCategory = HelpCategory.NONE,
+        urgency: int = 1,
+        sensitive_len: int = 0,
+    ) -> str | None:
+        """Mieszkaniec wysyła zgłoszenie (albo jego nową wersję) z bieżącego miejsca.
+
+        Zwraca identyfikator pakietu albo None, gdy telefon nie działa lub przekroczono limit nadawania.
+        """
+        if not self.agents.has_app[agent] or not self.radio.on[agent]:
+            return None
+        x, y = self.mobility.pos[agent]
+        cell = self.scenario.city.georef.geohash(float(x), float(y), 7)
+        p = self.router.create_report(agent, kind, category, urgency, cell, self.t, sensitive_len)
+        return None if p is None else self.router.packets[p].pid
 
     def issue_alert(
         self,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from enum import IntEnum
 
 import numpy as np
@@ -10,7 +11,46 @@ from scipy.spatial import cKDTree
 
 from sztafeta.engine.events import EventLog, EventType
 from sztafeta.engine.mobility import Mobility
-from sztafeta.engine.model import AgentArrays, AgentState, CityMap, FloatArr, IntArr, Params, Role
+from sztafeta.engine.model import (
+    AgentArrays,
+    AgentState,
+    CityMap,
+    FloatArr,
+    HelpCategory,
+    IntArr,
+    Params,
+    ReportKind,
+    Role,
+)
+
+NeedTable = tuple[tuple[HelpCategory, ...], tuple[float, ...], tuple[float, ...]]
+
+# powody i pilność zgłoszeń „potrzebuję pomocy”: (kategorie, wagi kategorii, wagi pilności 1..3)
+_ZONE_NEEDS: NeedTable = (
+    (HelpCategory.EVACUATION, HelpCategory.MEDICAL, HelpCategory.MEDICINE, HelpCategory.WATER),
+    (0.45, 0.25, 0.20, 0.10),
+    (0.25, 0.45, 0.30),
+)
+_BLACKOUT_NEEDS: NeedTable = (
+    (HelpCategory.POWER, HelpCategory.MEDICINE, HelpCategory.MEDICAL, HelpCategory.WATER),
+    (0.40, 0.30, 0.15, 0.15),
+    (0.50, 0.40, 0.10),
+)
+_DUE_NONE = 0
+_DUE_SAFE = 1
+_DUE_BLACKOUT_NEED = 2
+_DUE_UPDATE = 3
+
+
+@dataclass(slots=True)
+class ReportRequest:
+    """Mieszkaniec chce wysłać zgłoszenie (Simulation zamienia to na podpisany pakiet)."""
+
+    agent: int
+    kind: ReportKind
+    category: HelpCategory
+    urgency: int
+    sensitive_len: int = 0
 
 
 class Activity(IntEnum):
@@ -26,7 +66,10 @@ class Behavior:
 
     __slots__ = (
         "_agents",
+        "_category",
         "_city",
+        "_due_kind",
+        "_due_t",
         "_events",
         "_mob",
         "_next_wom_t",
@@ -34,12 +77,14 @@ class Behavior:
         "_rng",
         "_rng_walk",
         "_spread_m",
+        "_urgency",
         "_wom_p",
         "activity",
         "evacuated_now",
         "need_help_now",
         "next_walk_t",
         "react_t",
+        "requests",
     )
 
     def __init__(
@@ -72,6 +117,12 @@ class Behavior:
         # agenci, którzy w bieżącym kroku dotarli do punktu ewakuacji / zgłosili potrzebę pomocy
         self.evacuated_now: list[int] = []
         self.need_help_now: list[int] = []
+        # zgłoszenia do wysłania w bieżącym kroku oraz zaplanowane na później
+        self.requests: list[ReportRequest] = []
+        self._due_t: FloatArr = np.full(n, np.inf)
+        self._due_kind: NDArray[np.uint8] = np.zeros(n, dtype=np.uint8)
+        self._urgency: NDArray[np.uint8] = np.zeros(n, dtype=np.uint8)
+        self._category: NDArray[np.uint8] = np.zeros(n, dtype=np.uint8)
 
     # ------------------------------------------------------------------ wejścia z innych podsystemów
 
@@ -86,11 +137,58 @@ class Behavior:
             ag.wom_t[agent] = t
         if not first:
             return
+        if ag.state[agent] == AgentState.NEED_HELP:
+            return  # już zgłosił potrzebę pomocy i zostaje na miejscu
         if ag.state[agent] in (AgentState.NO_APP, AgentState.UNINFORMED):
             ag.state[agent] = int(AgentState.INFORMED)
-        if ag.role[agent] == Role.RESIDENT and ag.in_zone[agent]:
+        if ag.role[agent] != Role.RESIDENT:
+            return
+        if ag.in_zone[agent]:
             delay = self._rng.lognormal(np.log(self._p.reaction_median_s), self._p.reaction_sigma)
             self.react_t[agent] = t + min(float(delay), self._p.reaction_max_s)
+        elif (
+            via_app
+            and self._due_kind[agent] == _DUE_NONE
+            and self._rng.random() < self._p.p_safe_report_outside
+        ):
+            self._schedule(agent, t + float(self._rng.exponential(self._p.safe_report_delay_s)), _DUE_SAFE)
+
+    def schedule_blackout_needs(self, t: float) -> None:
+        """Po awarii sieci część mieszkańców będzie potrzebować pomocy niezależnie od powodzi."""
+        res = np.flatnonzero(self._agents.role == int(Role.RESIDENT))
+        hit = res[self._rng.random(res.size) < self._p.p_need_help_blackout]
+        when = t + self._rng.uniform(0.0, self._p.need_help_blackout_window_s, size=hit.size)
+        self._due_t[hit] = when
+        self._due_kind[hit] = _DUE_BLACKOUT_NEED
+
+    def _schedule(self, agent: int, when: float, kind: int) -> None:
+        self._due_t[agent] = when
+        self._due_kind[agent] = kind
+
+    def _need_help(self, agent: int, t: float, table: NeedTable) -> None:
+        """Agent zostaje na miejscu i (jeśli ma aplikację) zgłasza „potrzebuję pomocy”."""
+        ag = self._agents
+        self.activity[agent] = int(Activity.STAYING)
+        ag.state[agent] = int(AgentState.NEED_HELP)
+        self.next_walk_t[agent] = np.inf
+        self.react_t[agent] = np.inf
+        if self._mob.moving[agent]:
+            self._mob.start_trip_to(agent, ag.home_xy[agent])
+        self.need_help_now.append(agent)
+        categories, cat_w, urg_w = table
+        category = categories[int(self._rng.choice(len(categories), p=cat_w))]
+        urgency = 1 + int(self._rng.choice(3, p=urg_w))
+        sensitive = int(self._rng.integers(48, 161)) if self._rng.random() < self._p.p_sensitive else 0
+        update = self._rng.random() < self._p.p_report_update
+        if not ag.has_app[agent]:
+            return
+        self._urgency[agent] = urgency
+        self._category[agent] = int(category)
+        self.requests.append(ReportRequest(agent, ReportKind.NEED_HELP, category, urgency, sensitive))
+        if update:
+            self._schedule(
+                agent, t + float(self._rng.exponential(self._p.report_update_delay_s)), _DUE_UPDATE
+            )
 
     def send_to(self, agent: int, dst_xy: FloatArr) -> None:
         """Wysyła agenta w obie strony do `dst_xy` (używane przez trolla)."""
@@ -104,8 +202,10 @@ class Behavior:
     def step(self, t: float, arrived: IntArr) -> None:
         self.evacuated_now.clear()
         self.need_help_now.clear()
+        self.requests.clear()
         self._handle_arrivals(t, arrived)
         self._handle_reactions(t)
+        self._handle_due(t)
         self._start_walks(t)
         if self._p.wom_enabled and t >= self._next_wom_t:
             self._word_of_mouth(t)
@@ -126,6 +226,9 @@ class Behavior:
                 ag.evac_done_t[agent] = t
                 self.evacuated_now.append(agent)
                 self._events.emit(t, EventType.EVACUATION_DONE, agent=agent)
+                wants = self._rng.random() < self._p.p_safe_report_evacuated
+                if ag.has_app[agent] and wants:
+                    self.requests.append(ReportRequest(agent, ReportKind.SAFE, HelpCategory.NONE, 1))
 
     def _handle_reactions(self, t: float) -> None:
         due = np.flatnonzero(self.react_t <= t)
@@ -138,11 +241,7 @@ class Behavior:
             self.react_t[agent] = np.inf
             self.next_walk_t[agent] = np.inf
             if u < p.p_need_help_zone:
-                self.activity[agent] = int(Activity.STAYING)
-                ag.state[agent] = int(AgentState.NEED_HELP)
-                if self._mob.moving[agent]:
-                    self._mob.start_trip_to(agent, ag.home_xy[agent])
-                self.need_help_now.append(agent)
+                self._need_help(agent, t, _ZONE_NEEDS)
             elif u < p.p_need_help_zone + (1.0 - p.p_need_help_zone) * p.p_comply:
                 self._mob.start_trip_to(agent, self._city.evac_xy + self._evac_offset())
                 self.activity[agent] = int(Activity.EVACUATING)
@@ -153,6 +252,28 @@ class Behavior:
                 self.activity[agent] = int(Activity.STAYING)
                 if self._mob.moving[agent]:
                     self._mob.start_trip_to(agent, ag.home_xy[agent])
+
+    def _handle_due(self, t: float) -> None:
+        """Zaplanowane zgłoszenia: „bezpieczny” spoza strefy, potrzeby po awarii, aktualizacje."""
+        due = np.flatnonzero(self._due_t <= t)
+        if due.size == 0:
+            return
+        ag = self._agents
+        for agent in due.tolist():
+            kind = int(self._due_kind[agent])
+            self._due_t[agent] = np.inf
+            self._due_kind[agent] = _DUE_NONE
+            at_home = self.activity[agent] in (Activity.HOME, Activity.WALK)
+            if kind == _DUE_SAFE and at_home:
+                self.requests.append(ReportRequest(agent, ReportKind.SAFE, HelpCategory.NONE, 1))
+            elif kind == _DUE_BLACKOUT_NEED and at_home:
+                self._need_help(agent, t, _BLACKOUT_NEEDS)
+            elif kind == _DUE_UPDATE and ag.state[agent] == AgentState.NEED_HELP:
+                # sytuacja się pogarsza: nowa wersja zgłoszenia z wyższą pilnością
+                urgency = min(int(self._urgency[agent]) + 1, 3)
+                self._urgency[agent] = urgency
+                category = HelpCategory(int(self._category[agent]))
+                self.requests.append(ReportRequest(agent, ReportKind.NEED_HELP, category, urgency))
 
     def _evac_offset(self) -> FloatArr:
         """Losowe miejsce w obrębie punktu ewakuacji, żeby ludzie nie stali w jednym punkcie."""

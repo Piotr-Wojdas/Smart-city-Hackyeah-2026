@@ -79,6 +79,16 @@ węzły swojego sektora w losowej, stałej kolejności.
 | `behavior.p_report_update` | 15%, po ok. 30 min | aktualizacja zgłoszenia (nowa wersja nadpisuje starszą) | założenie zespołu |
 | `behavior.p_sensitive` | 30% zgłoszeń NEED_HELP | zgłoszenia z częścią zaszyfrowaną dla służb | założenie zespołu |
 
+Rozkłady treści zgłoszeń „potrzebuję pomocy” (założenie zespołu):
+- w strefie zagrożenia: ewakuacja 45%, medyczna 25%, leki 20%, woda 10%; pilność 1/2/3 = 25% / 45% / 30%;
+- po awarii sieci (poza powodzią): prąd 40%, leki 30%, medyczna 15%, woda 15%; pilność 1/2/3 = 50% / 40% / 10%;
+- aktualizacja zgłoszenia podnosi pilność o jeden stopień (najwyżej do 3).
+
+Osoba potrzebująca pomocy zostaje w domu. **Jeśli nie ma aplikacji, sztab o niej nie wie** – takie
+osoby są w modelu (i na mapie), ale nie generują zgłoszeń.
+Zgłoszenie „jestem bezpieczny” wysyła ewakuowany po dotarciu do punktu ewakuacji albo mieszkaniec
+spoza strefy ze swojego domu.
+
 Ewakuację wywołuje **wyłącznie** zweryfikowany alert z działaniem „ewakuuj” (albo informacja ustna od
 osoby, która taki alert ma). Fałszywy alert nigdy nie zmienia zachowania agenta.
 Mieszkańcy spoza strefy zagrożenia nie ewakuują się.
@@ -136,6 +146,9 @@ Reguły kontaktu:
 - **Alert i Ack**: routing epidemiczny (Vahdat, Becker, „Epidemic Routing for Partially-Connected
   Ad Hoc Networks”, 2000) z limitem skoków i `expires_at`.
 - **Report**: binarny Spray-and-Wait; kurier i hub przyjmują zgłoszenie zawsze (custody).
+  Nadawca zachowuje swoją kopię do czasu otrzymania Acka, kurier oddaje zgłoszenia tylko w hubie.
+- **PCZK** deduplikuje zgłoszenia po `report_id` (zostaje najnowsza wersja) i potwierdza je zbiorczo
+  w cyklu obsługi co `ack_delay_s`; jeden Ack obejmuje do `ack_batch_size` zgłoszeń.
 - **Priorytet przesyłania**: zweryfikowany alert > Ack > NEED_HELP > SAFE > treści niezweryfikowane.
 - **Bufor**: przy przepełnieniu usuwamy najpierw pakiety wygasłe, potem o najniższym priorytecie,
   potem najstarsze. Własnych niepotwierdzonych zgłoszeń urządzenie nie usuwa.
