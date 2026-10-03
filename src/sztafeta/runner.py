@@ -7,6 +7,7 @@ import hashlib
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from enum import IntEnum, StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,15 @@ class RunResult:
     summary: dict[str, Any]
     wall_s: float
     map_source: str
+
+
+def _plain_enum(value: Any) -> Any:
+    """Wyliczenia do YAML: StrEnum jako wartość (np. „issue_alert”), IntEnum jako nazwa (np. „FLOOD”)."""
+    if isinstance(value, StrEnum):
+        return value.value
+    if isinstance(value, IntEnum):
+        return value.name
+    return value
 
 
 def make_run_id(preset: str, seed: int, baseline: bool, overrides: Sequence[str]) -> str:
@@ -63,6 +73,7 @@ def run_once(
     info: dict[str, Any] = {
         "run_id": run_id,
         "preset": Path(preset).stem,
+        "preset_source": preset,
         "seed": seed,
         "baseline": baseline,
         "duration_s": end,
@@ -88,7 +99,7 @@ def run_once(
                 "start": scenario.start_iso,
                 "incident": scenario.incident,
                 "timeline": [
-                    {k: (v.name if hasattr(v, "name") else v) for k, v in dataclasses.asdict(act).items()}
+                    {k: _plain_enum(v) for k, v in dataclasses.asdict(act).items()}
                     for act in scenario.timeline
                 ],
             },

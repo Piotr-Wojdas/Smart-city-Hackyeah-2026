@@ -112,6 +112,8 @@ class Router:
 
         # fałszywe alerty
         self.fake_seen: BoolArr = np.zeros(n, dtype=np.bool_)
+        # urządzenie -> [(pakiet, czas odbioru, werdykt)] dla każdego alertu, który do niego dotarł
+        self.alert_log: dict[int, list[tuple[int, float, int]]] = {}
         self.fake_accepted: BoolArr = np.zeros(n, dtype=np.bool_)  # musi pozostać puste
 
         # wyniki bieżącego kroku, odbierane przez Simulation
@@ -492,6 +494,7 @@ class Router:
     def _reject_unverified(self, src: int, dst: int, p: int, hop: int, t: float) -> None:
         if self.kind[p] == PacketKind.ALERT:
             self.fake_seen[dst] = True
+            self.alert_log.setdefault(dst, []).append((p, t, int(self.verdict[p])))
         self._events.emit(
             t,
             EventType.ALERT_REJECTED,
@@ -508,6 +511,7 @@ class Router:
         inc = self._incident_index(alert.incident)
         verdict = self._verifier.check_alert(alert, t, int(self.alert_seq[dst, inc]))
         if verdict != Verdict.VERIFIED:
+            self.alert_log.setdefault(dst, []).append((p, t, int(verdict)))
             self._events.emit(
                 t,
                 EventType.ALERT_REJECTED,
@@ -523,6 +527,7 @@ class Router:
         if self.forged[p]:
             self.fake_accepted[j] = True  # nie powinno się zdarzyć – strażnik w metrykach
         self.alert_seq[j, inc] = alert.seq
+        self.alert_log.setdefault(j, []).append((p, t, int(Verdict.VERIFIED)))
         for old in self._incident_packets[inc]:
             if old != p and self.seq[old] < alert.seq:
                 self._drop(j, old)

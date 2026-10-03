@@ -51,6 +51,15 @@ def load_events(run_dir: Path, types: set[str] | None = None) -> list[dict[str, 
     return out
 
 
+def load_light(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any], pd.DataFrame]:
+    """Parametry, podsumowanie i metryki – bez snapshotów i zdarzeń (do wykresów)."""
+    if not (run_dir / w.SUMMARY_FILE).exists():
+        raise FileNotFoundError(f"W katalogu {run_dir} nie ma wyników uruchomienia ({w.SUMMARY_FILE})")
+    params = yaml.safe_load((run_dir / w.PARAMS_FILE).read_text(encoding="utf-8"))
+    summary = json.loads((run_dir / w.SUMMARY_FILE).read_text(encoding="utf-8"))
+    return params, summary, pd.read_csv(run_dir / w.METRICS_FILE)
+
+
 def load_run(run_dir: Path, event_types: set[str] | None = None) -> RunData:
     if not (run_dir / w.SNAPSHOTS_FILE).exists():
         raise FileNotFoundError(f"W katalogu {run_dir} nie ma wyników uruchomienia ({w.SNAPSHOTS_FILE})")

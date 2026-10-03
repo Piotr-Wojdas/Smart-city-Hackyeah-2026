@@ -1,15 +1,16 @@
-"""Interfejs wiersza poleceń: `sztafeta run | animate | frame`."""
+"""Interfejs wiersza poleceń: `sztafeta run | animate | frame | charts | inspect`."""
 
 from __future__ import annotations
 
 import contextlib
+import json
 import sys
 from pathlib import Path
 from typing import Annotated
 
 import typer
 
-from sztafeta.runner import run_once
+from sztafeta.runner import build, run_once
 from sztafeta.scenarios import list_presets
 
 app = typer.Typer(
@@ -137,3 +138,53 @@ def frame(
         typer.echo(f"Błąd: {exc}", err=True)
         raise typer.Exit(code=2) from exc
     typer.echo(f"Klatka: {path}")
+
+
+@app.command()
+def charts(
+    run_dir: Annotated[Path, typer.Argument(help="Katalog z wynikami uruchomienia.")],
+    baseline: Annotated[
+        Path | None,
+        typer.Option(help="Katalog wariantu bazowego (domyślnie <run_dir>_baseline, jeśli istnieje)."),
+    ] = None,
+    lang: Annotated[str, typer.Option(help="Język napisów: pl albo en.")] = "pl",
+    out: Annotated[
+        Path | None, typer.Option(help="Katalog na pliki PNG (domyślnie <run_dir>/wykresy).")
+    ] = None,
+) -> None:
+    """Wykresy do slajdów i karta wyników (PNG 16:9, 200 dpi)."""
+    from sztafeta.viz.charts import render_charts
+
+    try:
+        paths = render_charts(run_dir, baseline, lang, out)
+    except (FileNotFoundError, ValueError, KeyError) as exc:
+        typer.echo(f"Błąd: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    for path in paths:
+        typer.echo(f"Wykres: {path}")
+
+
+@app.command()
+def inspect(
+    run_dir: Annotated[Path, typer.Argument(help="Katalog z wynikami uruchomienia.")],
+    agent: Annotated[int, typer.Option(help="Id agenta.")],
+    t: Annotated[float | None, typer.Option(help="Chwila (sekundy czasu modelu); domyślnie koniec.")] = None,
+) -> None:
+    """Stan telefonu agenta w chwili t (JSON). Odtwarzany przez ponowne przeliczenie symulacji."""
+    import yaml
+
+    params_file = run_dir / "params.yaml"
+    if not params_file.exists():
+        typer.echo(f"Błąd: w katalogu {run_dir} nie ma params.yaml", err=True)
+        raise typer.Exit(code=2)
+    meta = yaml.safe_load(params_file.read_text(encoding="utf-8"))
+    source = str(meta.get("preset_source", meta["preset"]))
+    try:
+        sim, params, _ = build(source, int(meta["seed"]), list(meta["overrides"]), bool(meta["baseline"]))
+        end = float(meta["duration_s"]) if t is None else min(float(t), params.duration_s)
+        sim.run(end)
+        view = sim.phone_view(agent)
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(f"Błąd: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    typer.echo(json.dumps(view, ensure_ascii=False, indent=2))

@@ -36,6 +36,7 @@ from sztafeta.engine.model import (
     HelpCategory,
     Lang,
     MsgType,
+    PacketKind,
     Params,
     Report,
     ReportKind,
@@ -48,9 +49,11 @@ from sztafeta.engine.pczk import Pczk
 from sztafeta.engine.population import build_population
 from sztafeta.engine.rng import make_streams
 from sztafeta.engine.routing import Router
+from sztafeta.engine.templates import render_alert
 
 SNAPSHOT_SCHEMA = "sztafeta.snapshot/1"
 STATIC_SCHEMA = "sztafeta.static/1"
+PHONE_SCHEMA = "sztafeta.phone/1"
 
 # bity pola `flags` w snapshocie
 FLAG_ALERT = 1  # ma zweryfikowany alert w aplikacji
@@ -410,6 +413,131 @@ class Simulation:
                 }
             )
         return out
+
+    def phone_view(self, agent: int) -> dict[str, Any]:
+        """Stan telefonu agenta w bieżącej chwili – dane pod przyszły widok modułu w aplikacji.
+
+        Pola `truth` zawierają wiedzę symulacji, której sam telefon nie ma (np. to, że zgłoszenie
+        dotarło już do PCZK, zanim wróciło potwierdzenie).
+        """
+        ag = self.agents
+        router = self.router
+        if not 0 <= agent < ag.n:
+            raise ValueError(f"Nie ma agenta o id {agent} (zakres 0..{ag.n - 1})")
+        lang = Lang(int(ag.lang[agent]))
+        places = {"EVAC-1": self.scenario.evac_name}
+        alerts: list[dict[str, Any]] = []
+        for p, received_t, verdict_code in router.alert_log.get(agent, []):
+            packet = router.packets[p]
+            assert isinstance(packet, Alert)
+            verdict = Verdict(verdict_code)
+            verified = verdict == Verdict.VERIFIED
+            text = render_alert(packet, lang, verified, places)
+            if not verified:
+                status = "rejected"
+            elif router.have[agent, p]:
+                status = "active"
+            else:
+                status = "superseded" if router.live[p] else "expired"
+            alerts.append(
+                {
+                    "id": packet.pid,
+                    "verified": verified,
+                    "verdict": verdict.name.lower(),
+                    "status": status,
+                    "seq": packet.seq,
+                    "msg_type": packet.msg_type.name,
+                    "hazard": packet.hazard.name,
+                    "action": packet.action.name,
+                    "received_t": received_t,
+                    "hops": int(router.hops[agent, p]) if verified else 1,
+                    "issuer": packet.cert.issuer_id,
+                    "text": {
+                        "lang": text.lang,
+                        "header": text.header,
+                        "title": text.title,
+                        "body": text.body,
+                        "pictograms": list(text.pictograms),
+                    },
+                }
+            )
+        reports: list[dict[str, Any]] = []
+        ti = router.track_of_agent.get(agent)
+        if ti is not None:
+            track = router.tracks[ti]
+            latest = track.latest_version
+            acked = track.acked_version >= latest
+            if acked:
+                truth = "acked"
+            elif track.delivered_version >= latest:
+                truth = "delivered"
+            elif not np.isnan(track.picked_up_t):
+                truth = "picked_up"
+            else:
+                truth = "waiting"
+            reports.append(
+                {
+                    "report_id": track.report_id,
+                    "version": latest,
+                    "kind": track.kind.name,
+                    "category": track.category.name,
+                    "urgency": track.urgency,
+                    "persons": track.persons,
+                    "created_t": track.created_t,
+                    "phone_status": "acked" if acked else "sent",
+                    "acked_t": None if np.isnan(track.acked_t) else track.acked_t,
+                    "truth": {
+                        "status": truth,
+                        "picked_up_t": None if np.isnan(track.picked_up_t) else track.picked_up_t,
+                        "delivered_t": None if np.isnan(track.delivered_t) else track.delivered_t,
+                    },
+                }
+            )
+        held = router.buffer_of(agent)
+        by_kind = {kind.name.lower(): 0 for kind in PacketKind}
+        packets: list[dict[str, Any]] = []
+        for p in held:
+            kind = PacketKind(int(router.kind[p]))
+            by_kind[kind.name.lower()] += 1
+            packets.append(
+                {
+                    "id": router.packets[p].pid,
+                    "kind": kind.name.lower(),
+                    "priority": int(router.prio[p]),
+                    "hops": int(router.hops[agent, p]),
+                    "copies": int(router.copies[agent, p]),
+                    "bytes": int(router.size[p]),
+                    "own": int(router.origin[p]) == agent,
+                }
+            )
+        x, y = self.mobility.pos[agent]
+        return {
+            "schema": PHONE_SCHEMA,
+            "t": self.t,
+            "agent": agent,
+            "role": Role(int(ag.role[agent])).name.lower(),
+            "has_app": bool(ag.has_app[agent]),
+            "lang": lang.name.lower(),
+            "state": AgentState(int(ag.state[agent])).name.lower(),
+            "in_zone": bool(ag.in_zone[agent]),
+            "position": {
+                "x": round(float(x), 1),
+                "y": round(float(y), 1),
+                "geohash": self.scenario.city.georef.geohash(float(x), float(y), 7),
+            },
+            "battery": round(float(ag.battery[agent]), 1),
+            "device_on": bool(self.radio.on[agent]),
+            "radio": {"scanning": bool(self.radio.awake[agent]), "links": int(self.radio.n_links[agent])},
+            "informed_by_word_of_mouth": not bool(np.isnan(ag.wom_t[agent])),
+            "alerts": alerts,
+            "own_reports": reports,
+            "buffer": {
+                "count": len(held),
+                "limit": int(router.buf_limit[agent]),
+                "by_kind": by_kind,
+                "packets": packets,
+            },
+        }
 
     def pczk_dashboard(self) -> dict[str, Any]:
         """Stan dashboardu sztabu: liczniki i lista zgłoszeń według pilności."""
