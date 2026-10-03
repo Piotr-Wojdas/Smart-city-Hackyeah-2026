@@ -11,7 +11,7 @@ from typing import Annotated
 import typer
 
 from sztafeta.runner import build, run_once
-from sztafeta.scenarios import list_presets, read_preset
+from sztafeta.scenarios import AREA_CITY, list_presets, read_preset
 
 app = typer.Typer(
     add_completion=False,
@@ -64,10 +64,9 @@ def run(
     s = result.summary
     typer.echo("")
     typer.echo(f"Mapa: {result.map_source}")
-    typer.echo(
-        f"Mieszkańcy: {s['residents']} (z aplikacją: {s['residents_with_app']}, "
-        f"w strefie zagrożenia: {s['zone_residents']})"
-    )
+    city = s.get("area") == AREA_CITY
+    area = "alert dla całego miasta" if city else f"w strefie zagrożenia: {s['zone_residents']}"
+    typer.echo(f"Mieszkańcy: {s['residents']} (z aplikacją: {s['residents_with_app']}, {area})")
     typer.echo(
         f"Zasięg alertu wśród telefonów z aplikacją: {s['alert_reach_app']:.1f}% "
         f"(50% po {_fmt_time(s['t50_app_s'])}, 90% po {_fmt_time(s['t90_app_s'])})"
@@ -76,7 +75,8 @@ def run(
         f"Zasięg wśród wszystkich mieszkańców: aplikacja {s['alert_reach_all']:.1f}% "
         f"+ przekaz ustny {s['wom_reach_all']:.1f}% (liczony osobno)"
     )
-    typer.echo(f"Ewakuowani ze strefy zagrożenia: {s['evacuated_zone']:.1f}%")
+    who = "Mieszkańcy miasta w punkcie ewakuacji" if city else "Ewakuowani ze strefy zagrożenia"
+    typer.echo(f"{who}: {s['evacuated_zone']:.1f}%")
     typer.echo(
         f"Zgłoszenia: {s['reports_delivered']} z {s['reports_created']} w PCZK "
         f"(„potrzebuję pomocy”: {s['need_help_delivered']} z {s['need_help_created']}), "

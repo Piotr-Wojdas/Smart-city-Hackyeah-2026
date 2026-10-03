@@ -44,8 +44,8 @@ uv run sztafeta run --preset flood-stronie --seed 42 --baseline
 # wykresy do slajdów i karta wyników (PNG 16:9); wariant bazowy jest wykrywany automatycznie
 uv run sztafeta charts results/flood-stronie_s42
 
-# animacja mapy (MP4 1920x1080, ok. 40 s, bez zatrzymań): awaria sieci, wyjazd kurierów, zbliżenie na
-# osiedle, w którym telefony łączą się i przekazują sobie alert, ewakuacja strefy zagrożenia.
+# animacja mapy (MP4 1920x1080, ok. 45 s, bez zatrzymań): awaria sieci, kurierzy rozchodzą się po
+# mieście, zbliżenie na osiedle, w którym telefony łączą się i przekazują sobie alert, ewakuacja miasta.
 # --no-closeup pomija zbliżenie, --step zmienia tempo, --t-to wydłuża film, --lang en daje napisy angielskie
 uv run sztafeta animate results/flood-stronie_s42
 
@@ -94,16 +94,19 @@ Oś czasu (czas modelu, 6 h):
 |---|---|
 | T+0 | awaria sieci komórkowej |
 | T+10 min | PCZK wydaje podpisany alert „powódź – ewakuacja” |
-| T+20 min | kurierzy wyruszają na patrol strefy zagrożenia, wracają do huba co ok. 30 min |
+| T+20 min | kurierzy rozchodzą się po całym mieście (ulice przy budynkach), wracają do huba co ok. 30 min |
 | T+30 min | troll rozsyła fałszywy alert „odwołanie ewakuacji” |
 | T+3 h | nowa wersja alertu zastępuje poprzednią |
 
-Mieszkańcy strefy zagrożenia, którzy dostali zweryfikowany alert, po czasie reakcji idą do punktu
-ewakuacji; część zostaje i zgłasza potrzebę pomocy. Kurierzy zbierają zgłoszenia po drodze
-i oddają je w hubie, a PCZK odsyła potwierdzenia zbiorcze.
+Scenariusz nie ma wydzielonej strefy zagrożenia: alert dotyczy **całego miasta** (`scenario.area: city`
+w presecie; wartość `zone` przywraca strefę wzdłuż rzeki). Mieszkańcy, którzy dostali zweryfikowany
+alert, po czasie reakcji idą do punktu ewakuacji; część zostaje i zgłasza potrzebę pomocy. Kurierzy
+przekazują alert telefonom, które mijają, zbierają zgłoszenia po drodze i oddają je w hubie, a PCZK
+odsyła potwierdzenia zbiorcze.
 
-Animacja celowo opowiada tylko jedną historię: pada sieć, kurierzy ruszają w teren, telefony przekazują
-sobie alert (zbliżenie), mieszkańcy strefy się ewakuują; kończy się, gdy ewakuacja jest prawie zakończona.
+Animacja celowo opowiada tylko jedną historię: pada sieć, kurierzy rozchodzą się po mieście, telefony
+przekazują sobie alert (zbliżenie), mieszkańcy idą do punktu ewakuacji; kończy się, gdy ewakuacja jest
+prawie zakończona. W lewym górnym rogu jest nazwa aplikacji, **Netless**.
 Osób bez aplikacji, zgłoszeń do PCZK i wątku fałszywego alertu na niej nie ma, żeby obraz był czytelny;
 wszystkie trzy są w liczbach, na wykresach i w karcie wyników.
 
@@ -163,7 +166,8 @@ uv run pytest
   telefonami i ograniczeń systemu działającego w tle.
 - Urządzenia łączą się tylko wtedy, gdy mają sobie coś do przekazania; jałowych połączeń i ich kosztu
   baterii nie liczymy (uproszczenie na korzyść Sztafety).
-- Strefa zagrożenia to bufor wokół rzek, a nie mapa zalewowa; nie ma zalanych ani nieprzejezdnych ulic.
+- Scenariusz demo ewakuuje całe miasto do jednego punktu, którego pojemności nie modelujemy; nie ma
+  mapy zalewowej ani zalanych i nieprzejezdnych ulic.
 - Zachowania ludzi (czas reakcji, posłuszeństwo wobec alertu, zgłoszenia) to założenia zespołu,
   nie dane z badań.
 - Wariant bazowy „bez Sztafety” nie obejmuje syren, megafonów ani obchodu służb – jest dolną granicą.
@@ -171,8 +175,8 @@ uv run pytest
   warianty „same telefony” i „sami kurierzy”.
 - Duża część ewakuowanych to osoby bez aplikacji poinformowane ustnie przez domowników i sąsiadów.
   Siła tego przekazu jest założeniem; wyniki bez niego i w wariancie „tylko domownicy” są w WYNIKI.md.
-- Kurierzy patrolują tylko strefę zagrożenia i punkt ewakuacji, więc zgłoszenia spoza strefy docierają
-  do PCZK znacznie rzadziej.
+- Kurierzy przekazują alert tylko przez aplikację; nikogo nie informują ustnie (megafon, pukanie do
+  drzwi), więc osoby bez aplikacji zależą od domowników i sąsiadów.
 - Duty cycle skanowania (10 s co 60 s) i zasięg radia wpływają na wynik podobnie mocno; żadnego z nich
   nie zmierzyliśmy w terenie.
 - Tłumaczenia szablonów alertów na ukraiński, niemiecki i czeski są robocze.

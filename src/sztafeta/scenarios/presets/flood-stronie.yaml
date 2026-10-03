@@ -2,7 +2,7 @@
 # Mapa: dane OpenStreetMap z katalogu data/stronie-slaskie (polecenie `sztafeta fetch-osm`).
 # Gdy danych nie ma, używana jest proceduralna siatka z sekcji `grid` (fallback).
 name: flood-stronie
-description: Powódź w Stroniu Śląskim – awaria sieci komórkowej, ewakuacja strefy wzdłuż rzeki
+description: Powódź w Stroniu Śląskim – awaria sieci komórkowej, ewakuacja całego miasta
 
 map:
   kind: osm
@@ -21,6 +21,8 @@ map:
 
 scenario:
   start: "2024-09-15T06:00:00+02:00"
+  # alert i ewakuacja dotyczą całego miasta; `zone` = tylko strefy zagrożenia z mapy
+  area: city
   hub_name: "Urząd / PCZK"
   evac_name: "Szkoła – punkt ewakuacji"
   incident: "POWODZ-2024-09-15"

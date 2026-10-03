@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import numpy as np
 
-from sztafeta.engine.geo import points_in_polygon
 from sztafeta.engine.model import AgentArrays, AgentState, CityMap, FloatArr, Params, Role
 
 
@@ -64,7 +63,7 @@ def build_population(params: Params, city: CityMap, rng: np.random.Generator) ->
         has_app[trolls] = True
 
     in_zone = np.zeros(n, dtype=np.bool_)
-    in_zone[:n_res] = points_in_polygon(home_xy[:n_res], city.hazard_zone)
+    in_zone[:n_res] = city.in_area(home_xy[:n_res])
 
     # zgłoszenie pierwszej osoby z aplikacją w gospodarstwie obejmuje też domowników bez aplikacji
     report_persons = np.ones(n, dtype=np.uint8)

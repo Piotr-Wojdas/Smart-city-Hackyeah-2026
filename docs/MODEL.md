@@ -3,7 +3,7 @@
 **To jest model, nie pomiar.** Wszystkie liczby, wykresy i animacje pochodzą z symulacji komputerowej
 i pokazują, jak system *mógłby* działać przy opisanych niżej założeniach. Nie są danymi z terenu
 ani rekonstrukcją powodzi z września 2024 r. Scenariusz jest nią inspirowany: lokalizacje huba
-i punktu ewakuacji, przebieg strefy zagrożenia i oś czasu są umowne.
+i punktu ewakuacji, zasięg ewakuacji (całe miasto) i oś czasu są umowne.
 
 Zasada doboru wartości: **konserwatywnie**. Tam, gdzie nie mamy źródła, przyjmujemy wartość gorszą
 dla Sztafety (krótszy zasięg, dłuższe zestawianie połączenia, mniejsza przepustowość) i oznaczamy ją
@@ -36,11 +36,21 @@ i można go nadpisać z linii poleceń: `sztafeta run --set radio.range_m=80`.
   mieszkańców po zabudowie gospodarczej (założenie zespołu).
 - **Siatka proceduralna** (fallback i testy): nieregularna siatka ulic z „rzeką” przez środek.
   Nie odwzorowuje żadnego rzeczywistego miasta.
-- **Strefa zagrożenia**: wielokąt wzdłuż rzeki (bufor 120 m wokół rzek z OSM, `waterway=river`).
-  To nie jest mapa zalewowa ISOK.
+- **Obszar alertu** (`scenario.area` w presecie). W scenariuszu demo `flood-stronie` ma wartość
+  `city`: **nie ma wydzielonej strefy zagrożenia**, alert „ewakuuj” dotyczy wszystkich mieszkańców,
+  a kurierzy patrolują całe miasto (pkt 4). To założenie zespołu – upraszcza scenariusz do jednej
+  historii „całe miasto idzie do punktu ewakuacji” i nie odtwarza rzeczywistego zasięgu powodzi.
+  Wartość `zone` (domyślna dla presetów bez tego pola, używana w testach) ogranicza alert,
+  ewakuację i patrole do strefy zagrożenia z mapy.
+- **Strefa zagrożenia** (tylko przy `scenario.area: zone`): wielokąt wzdłuż rzeki (bufor 120 m wokół
+  rzek z OSM, `waterway=river`). To nie jest mapa zalewowa ISOK. Wielokąt zostaje w danych mapy
+  także wtedy, gdy scenariusz go nie używa.
 - **Hub**: położenie urzędu (`amenity=townhall`) z OSM. **Punkt ewakuacji**: szkoła z OSM leżąca
   poza strefą zagrożenia. Wybór jest umowny i nie odtwarza rzeczywistej organizacji ewakuacji.
 - **Hub i punkt ewakuacji** muszą leżeć poza strefą zagrożenia (sprawdzane przy budowie mapy).
+  W scenariuszu dla całego miasta punkt ewakuacji leży w obszarze alertu: jest miejscem zbiórki,
+  z którego w rzeczywistości ludzi wywoziłby transport. **Pojemności punktu ewakuacji nie modelujemy**
+  (w Stroniu trafia tam w modelu ponad połowa z 3000 mieszkańców).
 - Ruch odbywa się wyłącznie po grafie ulic; nie modelujemy zalanych, nieprzejezdnych odcinków.
 
 ## 3. Populacja
@@ -77,11 +87,18 @@ Zgłoszenie pierwszej osoby z aplikacją w gospodarstwie obejmuje też domownik�
 | `population.courier_hub_dwell_s` | 120 s | postój w hubie na synchronizację | założenie zespołu |
 | `population.evac_spread_m` | 20 m | ludzie w punkcie ewakuacji nie stoją w jednym miejscu | założenie zespołu |
 
-Kurierzy dzielą strefę zagrożenia na sąsiadujące sektory (wzdłuż głównej osi strefy) i objeżdżają
-węzły swojego sektora w losowej, stałej kolejności. Patrolują tylko strefę zagrożenia, punkt ewakuacji
-i hub – **nie resztę miasta**, dlatego zgłoszenia spoza strefy docierają do PCZK znacznie rzadziej
-(WYNIKI.md, tabela 2). Pojazdy kurierów jeżdżą po tej samej sieci co piesi. Kurierzy nikogo nie
-informują ustnie (konserwatywnie).
+Kurierzy dzielą obszar patrolu na sąsiadujące sektory (wzdłuż jego głównej osi) i objeżdżają węzły
+swojego sektora w losowej, stałej kolejności; co `courier_return_interval_s` odwiedzają punkt
+ewakuacji i wracają do huba. Obszar patrolu zależy od `scenario.area`:
+- `city` (scenariusz demo): **całe miasto**, czyli węzły ulic najbliższe budynkom mieszkalnym
+  (w Stroniu 751 z 4729 węzłów). Ścieżek, przy których nikt nie mieszka, kurierzy nie objeżdżają;
+- `zone`: tylko węzły w strefie zagrożenia, punkt ewakuacji i hub – nie reszta miasta, więc
+  zgłoszenia spoza strefy docierają wtedy do PCZK znacznie rzadziej.
+
+Pojazdy kurierów jeżdżą po tej samej sieci co piesi. Kurier przekazuje alert **wyłącznie przez
+aplikację** (telefon–telefon, jak każde inne urządzenie) i w ten sam sposób zbiera zgłoszenia.
+Nikogo nie informuje ustnie – to założenie konserwatywne: osoba bez aplikacji dowiaduje się
+o ewakuacji tylko od domowników i sąsiadów (przekaz ustny, pkt 5).
 
 ## 5. Zachowania mieszkańców
 
@@ -89,29 +106,30 @@ informują ustnie (konserwatywnie).
 |---|---|---|---|
 | `behavior.reaction_median_s` / `reaction_sigma` / `reaction_max_s` | mediana 5 min, rozkład log-normalny σ = 0,8, najwyżej 60 min | ludzie nie ruszają natychmiast: sprawdzają, pakują się, zbierają rodzinę | założenie zespołu (kształt rozkładu zgodny z literaturą o czasie mobilizacji przed ewakuacją) |
 | `behavior.p_comply` | 85% | część osób zostaje mimo alertu | założenie zespołu |
-| `behavior.p_need_help_zone` | 6% | osoby w strefie, które nie mogą ewakuować się same (seniorzy, osoby leżące) | założenie zespołu |
+| `behavior.p_need_help_zone` | 6% | osoby objęte alertem, które nie mogą ewakuować się same (seniorzy, osoby leżące) | założenie zespołu |
 | `behavior.p_need_help_blackout` | 1% w ciągu pierwszych 2 h | potrzeby wynikające z samej awarii (prąd dla sprzętu medycznego, leki) | założenie zespołu |
 | `behavior.p_safe_report_evacuated` | 80% | odsetek ewakuowanych z aplikacją, którzy klikną „Jestem bezpieczny” | założenie zespołu |
-| `behavior.p_safe_report_outside` | 25%, średnio po 10 min | osoby spoza strefy zgłaszające, że są bezpieczne | założenie zespołu |
+| `behavior.p_safe_report_outside` | 25%, średnio po 10 min | osoby spoza strefy zgłaszające, że są bezpieczne (tylko przy `scenario.area: zone`; w scenariuszu dla całego miasta nikogo takiego nie ma) | założenie zespołu |
 | `behavior.p_report_update` | 15%, po ok. 30 min | aktualizacja zgłoszenia (nowa wersja nadpisuje starszą) | założenie zespołu |
 | `behavior.p_sensitive` | 30% zgłoszeń NEED_HELP | zgłoszenia z częścią zaszyfrowaną dla służb | założenie zespołu |
 
 Rozkłady treści zgłoszeń „potrzebuję pomocy” (założenie zespołu):
-- w strefie zagrożenia: ewakuacja 45%, medyczna 25%, leki 20%, woda 10%; pilność 1/2/3 = 25% / 45% / 30%;
+- po alercie ewakuacyjnym: ewakuacja 45%, medyczna 25%, leki 20%, woda 10%; pilność 1/2/3 = 25% / 45% / 30%;
 - po awarii sieci (poza powodzią): prąd 40%, leki 30%, medyczna 15%, woda 15%; pilność 1/2/3 = 50% / 40% / 10%;
 - aktualizacja zgłoszenia podnosi pilność o jeden stopień (najwyżej do 3).
 
 Osoba potrzebująca pomocy zostaje w domu. **Jeśli nie ma aplikacji, sztab o niej nie wie** – takie
 osoby są w modelu (i na mapie), ale nie generują zgłoszeń.
-Zgłoszenie „jestem bezpieczny” wysyła ewakuowany po dotarciu do punktu ewakuacji albo mieszkaniec
-spoza strefy ze swojego domu.
+Zgłoszenie „jestem bezpieczny” wysyła ewakuowany po dotarciu do punktu ewakuacji (a w scenariuszu
+ze strefą zagrożenia także mieszkaniec spoza strefy, ze swojego domu).
 
 Ewakuację wywołuje **wyłącznie** zweryfikowany alert z działaniem „ewakuuj” (albo informacja ustna od
 osoby, która taki alert ma). Fałszywy alert nigdy nie zmienia zachowania agenta.
 Alert z innym działaniem (np. „zostań w budynku”) nie uruchamia ewakuacji ani przekazu ustnego i nie
 blokuje późniejszego alertu „ewakuuj”. Zweryfikowane odwołanie alertu zatrzymuje przekaz ustny od
 telefonu, który je dostał, oraz reakcję jego właściciela, jeśli jeszcze nie ruszył; osoby już idące
-nie zawracają. Mieszkańcy spoza strefy zagrożenia nie ewakuują się.
+nie zawracają. Ewakuują się tylko mieszkańcy objęci alertem: w scenariuszu demo wszyscy, a przy
+`scenario.area: zone` tylko mieszkańcy strefy zagrożenia.
 
 ### Przekaz ustny (liczony osobno)
 
@@ -252,5 +270,7 @@ który mechanizm. Dlatego przegląd liczy też dwa warianty pośrednie (WYNIKI.m
 - propagacji radiowej (tłumienie przez ściany, zakłócenia) – zasięg to stały promień;
 - różnic między modelami telefonów i ograniczeń systemu w tle;
 - zalanych i nieprzejezdnych ulic, korków, paniki;
+- pojemności punktu ewakuacji, transportu z niego i wielu punktów ewakuacji (w scenariuszu demo
+  całe miasto idzie do jednego punktu);
 - ataków innych niż fałszywy alert (np. zagłuszanie, Sybil – pełnej odporności na Sybil bez tożsamości nie ma);
 - powrotu sieci komórkowej i ładowania telefonów.

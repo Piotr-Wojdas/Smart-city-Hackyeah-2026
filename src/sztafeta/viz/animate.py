@@ -1,9 +1,12 @@
-"""Animacja mapy: jedna historia od awarii sieci do ewakuacji strefy zagrożenia.
+"""Animacja mapy: jedna historia od awarii sieci do ewakuacji mieszkańców.
 
-Kolejno: pada sieć komórkowa, PCZK wydaje alert, kurierzy ruszają w teren, kamera zbliża się na
-jedno osiedle i w zwolnionym tempie pokazuje, jak telefony zestawiają połączenia i przekazują sobie
-alert, a potem widać ewakuację mieszkańców strefy. Film kończy się, gdy ewakuacja jest w zasadzie
-zakończona. Obraz płynie bez zatrzymań.
+Kolejno: pada sieć komórkowa, PCZK wydaje alert, kurierzy rozchodzą się po mieście, kamera zbliża
+się na jedno osiedle i w zwolnionym tempie pokazuje, jak telefony zestawiają połączenia i przekazują
+sobie alert, a potem widać ewakuację mieszkańców do punktu ewakuacji. Film kończy się, gdy ewakuacja
+jest w zasadzie zakończona. Obraz płynie bez zatrzymań.
+
+Gdy scenariusz ma wydzieloną strefę zagrożenia, jest ona rysowana i podpisana, a napisy mówią
+o mieszkańcach strefy; bez strefy (alert dla całego miasta) mowa jest o mieszkańcach miasta.
 
 Rysowane jest tylko to, co niesie tę historię: telefony z aplikacją (szare = bez alertu, niebieskie =
 z alertem), przekazania alertu jako linie, ewakuujący się i kurierzy. Osoby bez aplikacji, zgłoszenia
@@ -35,14 +38,13 @@ from numpy.typing import NDArray
 
 from sztafeta.io.reader import RunData, load_run
 from sztafeta.viz import style
-from sztafeta.viz.labels import elapsed, people, tr
+from sztafeta.viz.labels import area_key, elapsed, people, tr, whole_city
 
 _EVENTS = {
     "network_down",
     "alert_issued",
     "alert_received",
     "courier_dispatched",
-    "evacuation_start",
     "contact",
 }
 _STATE_EVACUATING = 3
@@ -102,11 +104,11 @@ def build_story(run: RunData, lang: str, end_t: float) -> list[tuple[float, str]
     """Kluczowe momenty historii jako (czas, napis): awaria, alert, kurierzy, sztafeta, ewakuacja."""
     story: list[tuple[float, str]] = []
     seen: set[str] = set()
+    city = whole_city(run.summary)
     first_event = {
         "network_down": "ev_network_down",
         "alert_issued": "ev_alert_issued",
-        "courier_dispatched": "ev_couriers",
-        "evacuation_start": "ev_evac_start",
+        "courier_dispatched": area_key("ev_couriers", city),
     }
     for ev in run.events:
         key = first_event.get(ev["type"])
@@ -117,11 +119,14 @@ def build_story(run: RunData, lang: str, end_t: float) -> list[tuple[float, str]
     m = run.metrics
     times = m["t"].to_numpy(dtype=float)
     reach = m["alert_reach_app"].to_numpy(dtype=float)
+    started = m["evac_started_zone"].to_numpy(dtype=float)
     evacuated = m["evacuated_zone"].to_numpy(dtype=float)
+    # „zaczyna się ewakuować” dopiero, gdy ruszyło 5% mieszkańców, a nie pierwsza osoba spod huba
     thresholds = (
         (reach, 5.0, "ev_alert_relay"),
+        (started, 5.0, area_key("ev_evac_start", city)),
         (reach, 50.0, "ev_reach_50"),
-        (evacuated, 50.0, "ev_evac_half"),
+        (evacuated, 50.0, area_key("ev_evac_half", city)),
         (reach, 90.0, "ev_reach_90"),
     )
     for series, level, key in thresholds:
@@ -133,7 +138,7 @@ def build_story(run: RunData, lang: str, end_t: float) -> list[tuple[float, str]
     story = [item for item in story if item[0] < mark]
     if times.size:
         at_mark = float(evacuated[max(int(np.searchsorted(times, mark, side="right")) - 1, 0)])
-        story.append((mark, tr(lang, "ev_end", pct=at_mark)))
+        story.append((mark, tr(lang, area_key("ev_end", city), pct=at_mark)))
     story.sort(key=lambda item: item[0])
     return story
 
@@ -252,6 +257,7 @@ class MapAnimation:
         self._start = datetime.fromisoformat(static["run"]["start"])
         self._metric_t = run.metrics["t"].to_numpy()
         self._range_m = float(static["map"].get("radio_range_m", 40.0))
+        self._whole_city = whole_city(run.summary)
         self.end_t = story_end(run)
         self.story = build_story(run, lang, self.end_t)
         self.outage_t = next((float(e["t"]) for e in run.events if e["type"] == "network_down"), 0.0)
@@ -368,18 +374,26 @@ class MapAnimation:
         ax.set_ylim(y0, y1)
         ax.set_aspect("equal")
 
-        zone = np.asarray(m["hazard_zone"], dtype=np.float64)
-        ax.add_patch(
-            Polygon(
-                zone,
-                closed=True,
-                facecolor=style.HAZARD_FILL,
-                edgecolor=style.HAZARD_EDGE,
-                linewidth=1.0,
-                alpha=0.55,
-                zorder=1,
+        self._site_labels: list[Annotation] = []
+        if not self._whole_city:
+            zone = np.asarray(m["hazard_zone"], dtype=np.float64)
+            ax.add_patch(
+                Polygon(
+                    zone,
+                    closed=True,
+                    facecolor=style.HAZARD_FILL,
+                    edgecolor=style.HAZARD_EDGE,
+                    linewidth=1.0,
+                    alpha=0.55,
+                    zorder=1,
+                )
             )
-        )
+            anchor = self._zone_anchor(zone, self._city)
+            self._site_labels.append(
+                self._label(
+                    float(anchor[0]), float(anchor[1]), tr(self.lang, "zone"), style.HAZARD_EDGE, (0, 10)
+                )
+            )
         for line in m["water"]:
             pts = np.asarray(line, dtype=np.float64)
             ax.plot(
@@ -387,11 +401,6 @@ class MapAnimation:
             )
         streets = np.asarray(m["streets"], dtype=np.float64).reshape(-1, 2, 2)
         ax.add_collection(LineCollection(list(streets), colors=style.STREET_LIGHT, linewidths=1.0, zorder=2))
-
-        anchor = self._zone_anchor(zone, self._city)
-        self._site_labels: list[Annotation] = [
-            self._label(float(anchor[0]), float(anchor[1]), tr(self.lang, "zone"), style.HAZARD_EDGE, (0, 10))
-        ]
 
         self._idle_sc = self._scatter(style.PHONE_IDLE, 3)
         self._alert_sc = self._scatter(style.PHONE_ALERT, 4)
@@ -428,8 +437,12 @@ class MapAnimation:
             bbox={"boxstyle": "round,pad=0.45", "facecolor": style.SURFACE, "edgecolor": style.AXIS},
         )
 
-        self.fig.text(_MAP_BOX[0] + 0.004, 0.948, tr(self.lang, "title"), fontsize=30, fontweight="bold")
-        self.fig.text(_MAP_BOX[0] + 0.118, 0.954, tr(self.lang, "subtitle"), fontsize=17, color=style.INK2)
+        title = self.fig.text(
+            _MAP_BOX[0] + 0.004, 0.948, tr(self.lang, "title"), fontsize=30, fontweight="bold"
+        )
+        # podtytuł zaczyna się tuż za tytułem, niezależnie od długości nazwy
+        after_title = float(title.get_window_extent().x1) / float(self.fig.bbox.width) + 0.012
+        self.fig.text(after_title, 0.954, tr(self.lang, "subtitle"), fontsize=17, color=style.INK2)
         self.fig.text(_MAP_BOX[0] + 0.004, 0.030, tr(self.lang, "model_note"), fontsize=13, color=style.INK2)
         source = textwrap.shorten(tr(self.lang, "map_note", source=m["source"]), width=150, placeholder="…")
         self.fig.text(_MAP_BOX[0] + 0.004, 0.008, source, fontsize=11, color=style.MUTED)
@@ -544,6 +557,10 @@ class MapAnimation:
 
     # ------------------------------------------------------------------ panel
 
+    def _area(self, key: str) -> str:
+        """Klucz napisu w wariancie dla strefy zagrożenia albo dla całego miasta."""
+        return area_key(key, self._whole_city)
+
     def _build_panel(self) -> None:
         p = self.panel
         p.set_axis_off()
@@ -571,8 +588,9 @@ class MapAnimation:
         self._bars: dict[str, Rectangle] = {}
         self._values: dict[str, Text] = {}
         y = 0.795
-        for key, color in (("alert", style.BLUE), ("evac", style.AQUA)):
-            p.text(left, y, tr(lang, f"tile_{key}"), fontsize=14.5, color=style.INK2)
+        tiles = (("alert", "tile_alert", style.BLUE), ("evac", self._area("tile_evac"), style.AQUA))
+        for key, label, color in tiles:
+            p.text(left, y, tr(lang, label), fontsize=14.5, color=style.INK2)
             self._values[key] = p.text(left, y - 0.040, "", fontsize=23, fontweight="bold")
             p.add_patch(Rectangle((left, y - 0.060), 0.86, 0.010, facecolor=style.GRID, edgecolor="none"))
             bar = Rectangle((left, y - 0.060), 0.0, 0.010, facecolor=color, edgecolor="none")
@@ -696,7 +714,7 @@ class MapAnimation:
         reach = float(row["alert_reach_app"])
         evac = float(row["evacuated_zone"])
         self._values["alert"].set_text(tr(lang, "tile_alert_value", pct=reach))
-        self._values["evac"].set_text(tr(lang, "tile_evac_value", pct=evac))
+        self._values["evac"].set_text(tr(lang, self._area("tile_evac_value"), pct=evac))
         self._bars["alert"].set_width(0.86 * reach / 100.0)
         self._bars["evac"].set_width(0.86 * evac / 100.0)
         past = [item for item in self.story if item[0] <= t][-_STORY_LINES:]

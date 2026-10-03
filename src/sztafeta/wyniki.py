@@ -80,9 +80,10 @@ def adoption_threshold(summary: pd.DataFrame, spec: BatchSpec, range_m: float | 
     """Najmniejsza adopcja spełniająca kryterium „system ma sens” (przy kurierach odniesienia).
 
     Kryterium: połowa telefonów z aplikacją ma alert najpóźniej godzinę po jego wydaniu
-    i na koniec symulacji ma go co najmniej 90% telefonów z aplikacją w strefie zagrożenia
-    (mediany między seedami). Sam zasięg na koniec nie wystarcza: przy małej adopcji alert roznoszą
-    głównie kurierzy i trwa to godzinami.
+    i na koniec symulacji ma go co najmniej 90% telefonów z aplikacją w obszarze objętym alertem
+    (w strefie zagrożenia, a gdy scenariusz jej nie ma – w całym mieście; mediany między seedami).
+    Sam zasięg na koniec nie wystarcza: przy małej adopcji alert roznoszą głównie kurierzy
+    i trwa to godzinami.
     """
     radio = spec.baseline_range if range_m is None else range_m
     for adoption in sorted(spec.adoption):
@@ -97,24 +98,33 @@ def adoption_threshold(summary: pd.DataFrame, spec: BatchSpec, range_m: float | 
 
 
 def _variant_rows(
-    summary: pd.DataFrame, spec: BatchSpec, variants: tuple[tuple[str, str], ...], seeds: int
+    summary: pd.DataFrame, spec: BatchSpec, variants: tuple[tuple[str, str], ...], seeds: int, city: bool
 ) -> list[list[str]]:
     rows: list[list[str]] = []
     for name, label in variants:
         row = _one(summary, name, spec.baseline_adoption, spec.baseline_range, spec.baseline_couriers)
         if row is None:
             continue
+        zone = [] if city else [_pct_cell(row, "alert_reach_zone_app")]
         rows.append(
             [
                 label,
                 _pct_cell(row, "alert_reach_app"),
-                _pct_cell(row, "alert_reach_zone_app"),
+                *zone,
                 _time_cell(row, "t50_app_s", seeds),
                 _pct_cell(row, "evacuated_zone"),
                 _pct_cell(row, "reports_delivered_pct"),
             ]
         )
     return rows
+
+
+def is_whole_city(runs: pd.DataFrame) -> bool:
+    """Czy przegląd liczono bez strefy zagrożenia (alert dla całego miasta).
+
+    Wtedy liczby „w strefie” są równe ogólnym, więc dokument ich nie powtarza.
+    """
+    return "area" in runs.columns and bool((runs["area"] == "city").all())
 
 
 def write_wyniki(
@@ -131,6 +141,7 @@ def write_wyniki(
     ref_a, ref_r, ref_c = spec.baseline_adoption, spec.baseline_range, spec.baseline_couriers
     relay_runs = runs[runs["variant"] == FULL]
     ref = _one(summary, FULL, ref_a, ref_r, ref_c)
+    city = is_whole_city(runs)
 
     def variant(name: str) -> pd.Series[Any] | None:
         return _one(summary, name, ref_a, ref_r, ref_c)
@@ -156,6 +167,16 @@ def write_wyniki(
     add("")
     add(f"- preset: `{Path(spec.preset).stem}`, mapa: {runs['map_source'].iloc[0]}")
     add(f"- czas symulacji: {hours:.0f} h od awarii sieci, {int(runs['residents'].iloc[0])} mieszkańców")
+    if city:
+        add(
+            "- alert i ewakuacja dotyczą **całego miasta** (scenariusz bez wydzielonej strefy zagrożenia); "
+            "kurierzy patrolują ulice przy wszystkich budynkach"
+        )
+    else:
+        add(
+            "- alert i ewakuacja dotyczą mieszkańców **strefy zagrożenia** "
+            f"({int(runs['zone_residents'].iloc[0])} osób); kurierzy patrolują tylko strefę"
+        )
     add(f"- adopcja: {', '.join(f'{100 * a:.0f}%' for a in spec.adoption)}")
     add(f"- zasięg radia: {', '.join(f'{r:.0f} m' for r in spec.ranges)}")
     add(f"- liczba kurierów: {', '.join(str(c) for c in spec.couriers)}")
@@ -179,12 +200,12 @@ def write_wyniki(
     add("")
     setup = f"adopcja {100 * ref_a:.0f}%, zasięg {ref_r:.0f} m, {ref_c} kurierów, {seeds} seedów"
     if ref is not None:
+        in_zone = "" if city else f", a w strefie zagrożenia **{_med(ref, 'alert_reach_zone_app')}%**"
         text = (
             f"1. W modelu ({setup}) zweryfikowany alert po "
             f"{hours:.0f} h ma **{_med(ref, 'alert_reach_app')}% "
             f"telefonów z aplikacją** (rozrzut {float(ref['alert_reach_app_min']):.0f}–"
-            f"{float(ref['alert_reach_app_max']):.0f}%), a w strefie zagrożenia "
-            f"**{_med(ref, 'alert_reach_zone_app')}%**. Połowa telefonów ma go po "
+            f"{float(ref['alert_reach_app_max']):.0f}%){in_zone}. Połowa telefonów ma go po "
             f"{_time_cell(ref, 't50_app_s', seeds)} od wydania."
         )
         if short is not None:
@@ -194,26 +215,43 @@ def write_wyniki(
             )
         add(text)
         if base is not None and phones is not None and couriers_only is not None:
+
+            def zone_part(row: pd.Series[Any]) -> str:
+                return "" if city else f" (w strefie {_med(row, 'alert_reach_zone_app')}%)"
+
+            zone_note = (
+                ""
+                if city
+                else " W strefie zagrożenia większość pracy wykonują kurierzy, poza nią telefony mieszkańców."
+            )
             add(
                 f"2. Skąd bierze się ten wynik ({setup}): bez żadnego przekazywania alert ma "
                 f"{_med(base, 'alert_reach_app', 1)}% telefonów; same telefony bez kurierów dają "
-                f"{_med(phones, 'alert_reach_app')}% (w strefie {_med(phones, 'alert_reach_zone_app')}%); "
-                f"sami kurierzy bez przekazywania telefon–telefon {_med(couriers_only, 'alert_reach_app')}% "
-                f"(w strefie {_med(couriers_only, 'alert_reach_zone_app')}%); oba mechanizmy razem "
-                f"**{_med(ref, 'alert_reach_app')}%** (w strefie {_med(ref, 'alert_reach_zone_app')}%). "
-                "W strefie zagrożenia większość pracy wykonują kurierzy, poza nią telefony mieszkańców."
+                f"{_med(phones, 'alert_reach_app')}%{zone_part(phones)}; "
+                f"sami kurierzy bez przekazywania telefon–telefon {_med(couriers_only, 'alert_reach_app')}%"
+                f"{zone_part(couriers_only)}; oba mechanizmy razem "
+                f"**{_med(ref, 'alert_reach_app')}%**{zone_part(ref)}.{zone_note}"
+            )
+        if city:
+            delivered = f"**{_med(ref, 'reports_delivered_pct')}% zgłoszeń mieszkańców**"
+        else:
+            delivered = (
+                f"**{_med(ref, 'reports_delivered_zone_pct')}% zgłoszeń mieszkańców strefy zagrożenia** "
+                f"i {_med(ref, 'reports_delivered_outside_pct')}% zgłoszeń spoza strefy, gdzie kurierzy nie "
+                f"patrolują (łącznie {_med(ref, 'reports_delivered_pct')}%)"
             )
         add(
-            f"3. W modelu ({setup}) do PCZK dociera **{_med(ref, 'reports_delivered_zone_pct')}% zgłoszeń "
-            f"mieszkańców strefy zagrożenia** i {_med(ref, 'reports_delivered_outside_pct')}% zgłoszeń spoza "
-            f"strefy, gdzie kurierzy nie patrolują (łącznie {_med(ref, 'reports_delivered_pct')}%). Mediana "
+            f"3. W modelu ({setup}) do PCZK dociera {delivered}. Mediana "
             f"opóźnienia dostarczonych zgłoszeń to {_minutes(ref['delay_median_s_med'])} min. Potwierdzenie "
             f"„przyjęto” wraca do **{_med(ref, 'acks_received_pct')}%** "
             "zgłaszających, których zgłoszenie dotarło."
         )
+        if city:
+            evacuated = f"do punktu ewakuacji dociera **{_med(ref, 'evacuated_zone')}%** mieszkańców miasta"
+        else:
+            evacuated = f"ze strefy zagrożenia ewakuuje się **{_med(ref, 'evacuated_zone')}%** mieszkańców"
         text = (
-            f"4. W modelu ({setup}) ze strefy zagrożenia ewakuuje się **{_med(ref, 'evacuated_zone')}%** "
-            f"mieszkańców: {_med(ref, 'evacuated_zone_app')}% to osoby z aplikacją, a "
+            f"4. W modelu ({setup}) {evacuated}: {_med(ref, 'evacuated_zone_app')}% to osoby z aplikacją, a "
             f"{_med(ref, 'evacuated_zone_wom')}% osoby bez aplikacji poinformowane ustnie przez domowników "
             "i sąsiadów."
         )
@@ -239,9 +277,9 @@ def write_wyniki(
     add(
         f"Kryterium (umowne, przy {ref_c} kurierach): połowa "
         "telefonów z aplikacją ma alert **najpóźniej godzinę "
-        f"po jego wydaniu**, a po {hours:.0f} h ma go **co najmniej 90% telefonów z aplikacją w strefie "
-        "zagrożenia** (mediany między seedami). Sam zasięg na koniec nie wystarcza: przy małej adopcji alert "
-        "roznoszą głównie kurierzy i trwa to godzinami."
+        f"po jego wydaniu**, a po {hours:.0f} h ma go **co najmniej 90% telefonów z aplikacją"
+        f"{'' if city else ' w strefie zagrożenia'}** (mediany między seedami). Sam zasięg na koniec nie "
+        "wystarcza: przy małej adopcji alert roznoszą głównie kurierzy i trwa to godzinami."
     )
     add("")
     rows = []
@@ -268,7 +306,8 @@ def write_wyniki(
             if row is not None:
                 add(
                     f"Przy adopcji {100 * below[-1]:.0f}% połowa telefonów ma alert dopiero po "
-                    f"{_time_cell(row, 't50_app_s', seeds)}, a zasięg w strefie zagrożenia wynosi "
+                    f"{_time_cell(row, 't50_app_s', seeds)}, a zasięg "
+                    f"{'na koniec' if city else 'w strefie zagrożenia'} wynosi "
                     f"{float(row['alert_reach_zone_app_med']):.0f}%."
                 )
     add("")
@@ -297,7 +336,7 @@ def write_wyniki(
                     _time_cell(row, "t50_app_s", seeds),
                     _time_cell(row, "t90_app_s", seeds),
                     _pct_cell(row, "alert_reach_app"),
-                    _pct_cell(row, "alert_reach_zone_app"),
+                    *([] if city else [_pct_cell(row, "alert_reach_zone_app")]),
                 ]
             )
     add(
@@ -308,7 +347,7 @@ def write_wyniki(
                 "Czas do 50%",
                 "Czas do 90%",
                 f"Zasięg po {hours:.0f} h",
-                "W strefie zagrożenia",
+                *([] if city else ["W strefie zagrożenia"]),
             ],
             rows,
         )
@@ -324,8 +363,14 @@ def write_wyniki(
     add("")
     add(
         "Odsetek zgłoszeń wysłanych do danej chwili, które do tej chwili dotarły do PCZK (czas od awarii "
-        "sieci). Kurierzy patrolują strefę zagrożenia i punkt ewakuacji, dlatego zgłoszenia ze strefy "
-        "i spoza niej pokazujemy osobno. Liczba zgłoszeń rośnie z zasięgiem alertu, więc odsetki łączne "
+        "sieci). "
+        + (
+            "Kurierzy patrolują całe miasto i punkt ewakuacji. "
+            if city
+            else "Kurierzy patrolują strefę zagrożenia i punkt ewakuacji, dlatego zgłoszenia ze strefy "
+            "i spoza niej pokazujemy osobno. "
+        )
+        + "Liczba zgłoszeń rośnie z zasięgiem alertu, więc odsetki łączne "
         "z różnych wierszy nie są wprost porównywalne."
     )
     add("")
@@ -343,8 +388,14 @@ def write_wyniki(
                     _pct_cell(row, "reports_delivered_pct_1h"),
                     _pct_cell(row, "reports_delivered_pct_3h"),
                     _pct_cell(row, "reports_delivered_pct"),
-                    _pct_cell(row, "reports_delivered_zone_pct"),
-                    _pct_cell(row, "reports_delivered_outside_pct"),
+                    *(
+                        []
+                        if city
+                        else [
+                            _pct_cell(row, "reports_delivered_zone_pct"),
+                            _pct_cell(row, "reports_delivered_outside_pct"),
+                        ]
+                    ),
                     _pct_cell(row, "need_help_delivered_pct"),
                     f"{_minutes(row['delay_median_s_med'])} min",
                 ]
@@ -358,8 +409,7 @@ def write_wyniki(
                 "Po 1 h",
                 "Po 3 h",
                 f"Po {hours:.0f} h",
-                "Ze strefy",
-                "Spoza strefy",
+                *([] if city else ["Ze strefy", "Spoza strefy"]),
                 "„Potrzebuję pomocy”",
                 "Mediana opóźnienia dostarczonych",
             ],
@@ -406,12 +456,12 @@ def write_wyniki(
     header = [
         "Wariant",
         "Zasięg alertu (telefony z aplikacją)",
-        "Zasięg w strefie zagrożenia",
+        *([] if city else ["Zasięg w strefie zagrożenia"]),
         "Czas do 50%",
-        "Ewakuowani ze strefy",
+        "Mieszkańcy w punkcie ewakuacji" if city else "Ewakuowani ze strefy",
         "Zgłoszenia w PCZK",
     ]
-    mech = _variant_rows(summary, spec, MECHANISMS, seeds)
+    mech = _variant_rows(summary, spec, MECHANISMS, seeds, city)
     if len(mech) > 1:
         add(f"## 5. Co daje który mechanizm ({setup})")
         add("")
@@ -423,21 +473,32 @@ def write_wyniki(
             "zgłoszenie trzeba zanieść osobiście. Wariant nie obejmuje syren, megafonów ani obchodu służb – "
             "to dolna granica, nie opis tego, co się wydarzyło."
         )
-        add(
-            "- **Same telefony**: sieć niesiona ruchem ludzi. Bez kurierów alert rozchodzi się po mieście, "
-            "ale wolno, a zgłoszenia prawie nie docierają do PCZK."
-        )
-        add(
-            "- **Sami kurierzy**: kurier przekazuje alert "
-            "telefonom, które mija, i zbiera od nich zgłoszenia, "
-            "ale telefony nie podają niczego dalej. Wysoki "
-            "odsetek zgłoszeń wynika też z tego, że poza strefą "
-            "alert ma mniej osób, więc mniej osób w ogóle wysyła zgłoszenie."
-        )
+        if city:
+            add(
+                "- **Same telefony**: sieć niesiona wyłącznie ruchem mieszkańców. Nikt nie zbiera zgłoszeń "
+                "po drodze, więc do PCZK trafiają tylko te, których nosiciel znalazł się w zasięgu huba."
+            )
+            add(
+                "- **Sami kurierzy**: kurier przekazuje alert telefonom, które mija, i zbiera od nich "
+                "zgłoszenia, ale telefony nie podają niczego dalej. Odsetek zgłoszeń liczymy od zgłoszeń "
+                "wysłanych, a tych jest mniej, gdy alert ma mniej osób."
+            )
+        else:
+            add(
+                "- **Same telefony**: sieć niesiona ruchem ludzi. Bez kurierów alert rozchodzi się po "
+                "mieście, ale wolno, a zgłoszenia prawie nie docierają do PCZK."
+            )
+            add(
+                "- **Sami kurierzy**: kurier przekazuje alert "
+                "telefonom, które mija, i zbiera od nich zgłoszenia, "
+                "ale telefony nie podają niczego dalej. Wysoki "
+                "odsetek zgłoszeń wynika też z tego, że poza strefą "
+                "alert ma mniej osób, więc mniej osób w ogóle wysyła zgłoszenie."
+            )
         add("")
 
     # ------------------------------------------------------------------ wrażliwość
-    sens = _variant_rows(summary, spec, SENSITIVITY, seeds)
+    sens = _variant_rows(summary, spec, SENSITIVITY, seeds, city)
     if len(sens) > 1:
         add(f"## 6. Wrażliwość na założenia ({setup})")
         add("")

@@ -14,7 +14,7 @@ from typing import Any
 from sztafeta.engine.model import Params, Scenario
 from sztafeta.engine.sim import Simulation
 from sztafeta.io.writer import RunWriter, code_version
-from sztafeta.scenarios import load_preset, params_to_dict
+from sztafeta.scenarios import AREA_CITY, AREA_ZONE, load_preset, params_to_dict
 
 BASELINE_OVERRIDE = "routing.relay_enabled=false"
 
@@ -77,6 +77,8 @@ def run_once(
         "seed": seed,
         "baseline": baseline,
         "duration_s": end,
+        # kogo dotyczy alert: mieszkańców strefy zagrożenia albo – gdy jej nie ma – całego miasta
+        "area": AREA_ZONE if scenario.city.has_zone else AREA_CITY,
     }
     started = time.perf_counter()
 

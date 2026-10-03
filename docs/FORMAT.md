@@ -67,7 +67,8 @@ identyczny przebieg.
     "streets": [[x1, y1, x2, y2], ...],        // odcinki proste
     "water": [[[x, y], ...], ...],            // linie rzek (tylko do rysowania)
     "hub": {"x": 0.0, "y": 0.0}, "evac_point": {"x": 0.0, "y": 0.0},
-    "hazard_zone": [[x, y], ...],             // wielokąt bez powtórzonego domknięcia
+    "hazard_zone": [[x, y], ...],             // wielokąt bez powtórzonego domknięcia; [] = bez strefy,
+                                              // alert dotyczy całego miasta (scenario.area: city)
     "hub_name": "Urząd / PCZK", "evac_name": "Szkoła – punkt ewakuacji",
     "radio_range_m": 40.0
   },
@@ -187,13 +188,19 @@ agregowane na kontakt, żeby plik nie miał milionów wierszy. Zdarzenia w pliku
 
 Mianownikiem są mieszkańcy z rolą `resident` (bez trolla, kurierów i huba).
 
+„Strefa” w nazwach kolumn oznacza **obszar objęty alertem**. W scenariuszu bez wydzielonej strefy
+zagrożenia (`area: city`, np. `flood-stronie`) jest nim całe miasto: kolumny `*_zone_*` dotyczą
+wtedy wszystkich mieszkańców (`alert_reach_zone_app` = `alert_reach_app`), a `reports_outside_*`
+są równe 0.
+
 `summary.json` zawiera wartości końcowe oraz: `t50_app_s`, `t90_app_s`, `t50_zone_app_s`,
 `t90_zone_app_s`, `t50_evacuated_zone_s` (sekundy od wydania alertu; `null` = nie osiągnięto),
 `alert_reach_app_1h` / `_3h`, `reports_delivered_pct`, `reports_delivered_pct_1h` / `_3h`,
 `reports_delivered_zone_pct`, `reports_delivered_outside_pct`, `need_help_delivered_pct`,
 `evacuated_zone_app`, `evacuated_zone_wom`, `ack_transfer_pct` (odsetek transferów będących
 potwierdzeniami), `contacts_interrupted`, `packets_evicted`, liczebności populacji
-i identyfikację uruchomienia (`run_id`, `preset`, `seed`, `baseline`).
+i identyfikację uruchomienia (`run_id`, `preset`, `seed`, `baseline`, `area`). Pole `area` mówi,
+kogo dotyczył alert: `city` (całe miasto, bez strefy zagrożenia) albo `zone` (mieszkańców strefy).
 
 ## 7. Widok telefonu: `Simulation.phone_view(agent)` (`sztafeta inspect`)
 
@@ -265,7 +272,7 @@ w części zaszyfrowanej dla służb; w modelu to tylko flaga `sensitive_encrypt
 
 | Plik | Zawartość |
 |---|---|
-| `params.yaml` | `run_id`, `preset`, `preset_source`, `seed`, `baseline`, `overrides`, `code_version`, opis scenariusza (mapa, oś czasu) i pełne parametry |
+| `params.yaml` | `run_id`, `preset`, `preset_source`, `seed`, `baseline`, `area`, `overrides`, `code_version`, opis scenariusza (mapa, oś czasu) i pełne parametry |
 | `metrics.csv` | pkt 6 |
 | `events.jsonl` | pkt 5 |
 | `snapshots.npz` | stan co `output.snapshot_interval_s` (niżej) |
