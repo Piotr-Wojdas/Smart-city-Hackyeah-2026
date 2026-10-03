@@ -134,7 +134,7 @@ Pola `agent`, `peer`, `packet` i `data` są pomijane, gdy nie dotyczą zdarzenia
 | `network_down` | – | – | `label` |
 | `note` | – | – | `label` |
 | `alert_issued` | hub | – | `seq`, `hazard`, `action`, `msg_type`, `bytes` |
-| `alert_received` | odbiorca | – | `seq`, `hops`, `first` (pierwszy zweryfikowany alert na tym urządzeniu) |
+| `alert_received` | odbiorca | nadawca | `seq`, `hops`, `first` (pierwszy zweryfikowany alert na tym urządzeniu) |
 | `alert_rejected` | odbiorca | nadawca | `reason`: `bad_signature`, `untrusted_issuer`, `cert_expired`, `out_of_scope`, `stale_seq`, `expired` |
 | `troll_broadcast` | troll | – | `forgery`, `verdict` |
 | `word_of_mouth` | osoba poinformowana ustnie | – | – |

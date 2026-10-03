@@ -44,11 +44,14 @@ uv run sztafeta run --preset flood-stronie --seed 42 --baseline
 # wykresy do slajdów i karta wyników (PNG 16:9); wariant bazowy jest wykrywany automatycznie
 uv run sztafeta charts results/flood-stronie_s42
 
-# animacja mapy (MP4 1920x1080); --t-from/--t-to wycinają fragment, --lang en daje napisy angielskie
+# animacja mapy (MP4 1920x1080, ok. 1 min): widok miasta i zbliżenie na osiedle, w którym telefony
+# łączą się i przekazują sobie alert; --no-closeup pomija zbliżenie, --t-from/--t-to wycinają fragment,
+# --lang en daje napisy angielskie
 uv run sztafeta animate results/flood-stronie_s42
 
-# pojedyncza klatka jako PNG
+# pojedyncza klatka jako PNG: widok miasta w chwili t albo kadr zbliżenia
 uv run sztafeta frame results/flood-stronie_s42 --t 5400
+uv run sztafeta frame results/flood-stronie_s42 --closeup
 
 # stan telefonu agenta w chwili t (JSON): alerty z oznaczeniem weryfikacji i tekstem w języku
 # telefonu, własne zgłoszenia, bufor, bateria
@@ -98,6 +101,10 @@ Oś czasu (czas modelu, 6 h):
 Mieszkańcy strefy zagrożenia, którzy dostali zweryfikowany alert, po czasie reakcji idą do punktu
 ewakuacji; część zostaje i zgłasza potrzebę pomocy. Kurierzy zbierają zgłoszenia po drodze
 i oddają je w hubie, a PCZK odsyła potwierdzenia zbiorcze.
+
+Animacja celowo pokazuje tylko sztafetę: telefony z aplikacją, przekazania alertu, ewakuację, zgłoszenia
+i kurierów. Osób bez aplikacji i wątku fałszywego alertu na niej nie ma, żeby obraz był czytelny;
+oba są w liczbach, na wykresach i w karcie wyników.
 
 ## Architektura
 

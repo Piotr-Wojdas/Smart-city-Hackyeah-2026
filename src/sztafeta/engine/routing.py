@@ -117,7 +117,7 @@ class Router:
         self.fake_accepted: BoolArr = np.zeros(n, dtype=np.bool_)  # musi pozostać puste
 
         # wyniki bieżącego kroku, odbierane przez Simulation
-        self.new_alerts: list[tuple[int, int]] = []
+        self.new_alerts: list[tuple[int, int, int]] = []  # (odbiorca, pakiet, nadawca albo -1)
         self.deliveries: list[Delivery] = []
 
         # liczniki
@@ -333,7 +333,7 @@ class Router:
         if self.verdict[p] == Verdict.VERIFIED:
             inc = self._incident_index(alert.incident)
             self._incident_packets[inc].append(p)
-            self._accept_alert(agent, p, alert, inc, 0, t)
+            self._accept_alert(agent, p, alert, inc, 0, t, -1)
         else:
             self._hold(agent, p, 0, 0, t)
         return p
@@ -522,9 +522,9 @@ class Router:
                 reason=verdict.name.lower(),
             )
             return
-        self._accept_alert(dst, p, alert, inc, hop, t)
+        self._accept_alert(dst, p, alert, inc, hop, t, src)
 
-    def _accept_alert(self, j: int, p: int, alert: Alert, inc: int, hop: int, t: float) -> None:
+    def _accept_alert(self, j: int, p: int, alert: Alert, inc: int, hop: int, t: float, sender: int) -> None:
         if self.forged[p]:
             self.fake_accepted[j] = True  # nie powinno się zdarzyć – strażnik w metrykach
         self.alert_seq[j, inc] = alert.seq
@@ -534,7 +534,7 @@ class Router:
                 self._drop(j, old)
                 self._know(j, old)
         self._hold(j, p, hop, 0, t)
-        self.new_alerts.append((j, p))
+        self.new_alerts.append((j, p, sender))
 
     def _accept_ack(self, j: int, p: int, hop: int, t: float) -> None:
         self._hold(j, p, hop, 0, t)

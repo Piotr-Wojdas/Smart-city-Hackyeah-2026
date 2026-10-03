@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 import json
 from pathlib import Path
 
@@ -113,16 +114,18 @@ def test_frame_and_animation_render(run_dir: Path, tmp_path: Path) -> None:
 
     png = render_frame(run_dir, tmp_path / "klatka.png", t=900.0, lang="en", dpi=50)
     assert png.stat().st_size > 10_000
-    movie = render_animation(run_dir, tmp_path / "anim", every=30, dpi=50, fps=10, hold_s=0.2)
+    movie = render_animation(run_dir, tmp_path / "anim", every=30, dpi=50, fps=10, hold_s=0.2, closeup=False)
     assert movie.suffix in (".mp4", ".gif")
     assert movie.stat().st_size > 5_000
+    zoom = render_frame(run_dir, tmp_path / "zblizenie.png", lang="pl", dpi=50, closeup=True)
+    assert zoom.stat().st_size > 5_000
 
 
 def test_story_is_ordered_and_ends_with_summary(run_dir: Path) -> None:
     from sztafeta.io.reader import load_run
-    from sztafeta.viz.animate import _STORY_EVENTS, build_story
+    from sztafeta.viz.animate import _EVENTS, build_story
 
-    run = load_run(run_dir, _STORY_EVENTS)
+    run = load_run(run_dir, _EVENTS)
     story = build_story(run, "pl")
     times = [t for t, _ in story]
     texts = [text for _, text in story]
@@ -136,22 +139,57 @@ def test_story_is_ordered_and_ends_with_summary(run_dir: Path) -> None:
     relay_t = times[texts.index("Alert idzie od telefonu do telefonu")]
     row = run.metrics[run.metrics["t"] == relay_t].iloc[0]
     assert row["alert_reach_app"] >= 5.0
+    # wątek fałszywego alertu nie jest częścią animacji
+    assert not any("fałszyw" in text.lower() or "troll" in text.lower() for text in texts)
 
 
-def test_frame_plan_is_dense_early_and_holds_on_key_moments() -> None:
+def test_storyboard_paces_film_and_inserts_closeup() -> None:
+    from sztafeta.viz.animate import Closeup, Shot, storyboard
+
+    close = Closeup(0.0, 0.0, 1500.0, 1600.0, 6)
+    shots = storyboard(21600.0, 10.0, 0.0, 600.0, [600.0, 7200.0], close, fps=10, hold_s=0.5)
+    times = [s.t for s in shots]
+    assert times == sorted(times)  # czas nigdy się nie cofa
+    assert shots[0] == Shot(0.0) and shots[-1] == Shot(21600.0)
+    # tempo: przed alertem 60 s na klatkę, potem 20 s, po 90 min 120 s
+    city = sorted({s.t for s in shots if s.zoom == 0.0})
+    assert city[:3] == [0.0, 60.0, 120.0]
+    assert 620.0 in city and 640.0 in city and 5400.0 in city and 5520.0 in city and 5420.0 not in city
+    # zatrzymanie na kluczowym momencie: klatka + 5 powtórzeń
+    assert shots.count(Shot(600.0)) == 6 and shots.count(Shot(7200.0)) == 6
+    # zbliżenie: najazd, zwolnione tempo (0,5 s na klatkę), odjazd
+    zoomed = [s for s in shots if s.zoom == 1.0]
+    assert zoomed[0].t == 1500.0 and zoomed[-1].t == 1600.0
+    steps = {round(b.t - a.t, 3) for a, b in itertools.pairwise(zoomed)}
+    assert steps <= {0.5, 0.0}
+    ramp_in = [s.zoom for s in shots if s.t == 1500.0 and 0.0 < s.zoom < 1.0]
+    ramp_out = [s.zoom for s in shots if s.t == 1600.0 and 0.0 < s.zoom < 1.0]
+    assert ramp_in == sorted(ramp_in) and ramp_out == sorted(ramp_out, reverse=True) and len(ramp_in) == 9
+    assert 1520.0 not in city and 1620.0 in city  # czas zbliżenia nie jest pokazywany drugi raz
+
+    plain = storyboard(21600.0, 10.0, 0.0, 600.0, [], None, fps=10, hold_s=0.5)
+    assert all(s.zoom == 0.0 for s in plain)
+    uniform = storyboard(21600.0, 10.0, 0.0, 600.0, [], close, 10, 0.0, every=3, t_from=600.0, t_to=1200.0)
+    assert [s.t for s in uniform] == [600.0 + 30.0 * k for k in range(21)]  # zbliżenie poza zakresem
+    assert storyboard(100.0, 10.0, 0.0, 0.0, [], None, 10, 0.0, t_from=500.0, t_to=600.0) == []
+
+
+def test_closeup_picks_earliest_dense_burst_of_handovers() -> None:
     import numpy as np
 
-    from sztafeta.viz.animate import frame_plan
+    from sztafeta.viz.animate import pick_closeup
 
-    times = np.arange(0.0, 21601.0, 10.0)
-    plan = frame_plan(times, [600.0, 7200.0], 0.0, None, None, None, hold_frames=5)
-    assert plan == sorted(plan)  # czas nigdy się nie cofa
-    assert plan[0] == 0 and plan[-1] == times.size - 1
-    unique = sorted(set(plan))
-    early = [k for k in unique if times[k] < 5400.0]
-    late = [k for k in unique if times[k] >= 5400.0]
-    assert np.diff(early).max() == 2 and np.diff(late[:-1]).max() == 6
-    assert plan.count(60) == 6 and plan.count(720) == 6  # zatrzymanie: klatka + 5 powtórzeń
-    uniform = frame_plan(times, [], 0.0, 3, 600.0, 1200.0, hold_frames=5)
-    assert [float(times[k]) for k in uniform] == [600.0 + 30.0 * k for k in range(21)]
-    assert frame_plan(times, [], 0.0, None, 50000.0, 60000.0, hold_frames=0) == []
+    # dwie serie przekazań: wcześniejsza (6 w jednym miejscu) i późniejsza, gęstsza (8 gdzie indziej)
+    t = np.array([100.0 + 5 * k for k in range(6)] + [900.0 + 5 * k for k in range(8)] + [3000.0])
+    xy = np.array(
+        [[10.0 * k, 0.0] for k in range(6)] + [[2000.0 + 10 * k, 500.0] for k in range(8)] + [[9e3, 9e3]]
+    )
+    visible = np.ones(t.size, dtype=bool)
+    close = pick_closeup(t, xy, visible)
+    assert close is not None
+    assert close.t0 == 88.0 and close.handovers == 6  # wcześniejsza seria wystarcza (>= 60% najgęstszej)
+    assert abs(close.cx - 25.0) < 1e-9 and close.cy == 0.0
+    visible[:6] = False  # np. przekazania w obrębie jednego budynku
+    later = pick_closeup(t, xy, visible)
+    assert later is not None and later.handovers == 8 and later.cx > 2000.0
+    assert pick_closeup(t[:3], xy[:3], np.ones(3, dtype=bool)) is None  # za mało, żeby było co pokazać

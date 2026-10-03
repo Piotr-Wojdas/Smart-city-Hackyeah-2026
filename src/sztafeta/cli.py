@@ -107,6 +107,12 @@ def animate(
         ),
     ] = None,
     hold: Annotated[float, typer.Option(help="Zatrzymanie obrazu (s) przy każdym kluczowym momencie.")] = 1.2,
+    closeup: Annotated[
+        bool,
+        typer.Option(
+            "--closeup/--no-closeup", help="Zbliżenie na osiedle, w którym telefony przekazują sobie alert."
+        ),
+    ] = True,
     dpi: Annotated[int, typer.Option(help="120 = 1920x1080.")] = 120,
     t_from: Annotated[float | None, typer.Option(help="Początek fragmentu (sekundy czasu modelu).")] = None,
     t_to: Annotated[float | None, typer.Option(help="Koniec fragmentu (sekundy czasu modelu).")] = None,
@@ -120,7 +126,9 @@ def animate(
             typer.echo(f"  klatka {done} z {total}")
 
     try:
-        path = render_animation(run_dir, out, lang, fps, every, dpi, t_from, t_to, fmt, progress, hold)
+        path = render_animation(
+            run_dir, out, lang, fps, every, dpi, t_from, t_to, fmt, progress, hold, closeup
+        )
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         typer.echo(f"Błąd: {exc}", err=True)
         raise typer.Exit(code=2) from exc
@@ -130,16 +138,18 @@ def animate(
 @app.command()
 def frame(
     run_dir: Annotated[Path, typer.Argument(help="Katalog z wynikami uruchomienia.")],
-    t: Annotated[float, typer.Option(help="Chwila (sekundy czasu modelu).")] = 3600.0,
+    t: Annotated[float | None, typer.Option(help="Chwila (sekundy czasu modelu).")] = None,
+    closeup: Annotated[bool, typer.Option("--closeup", help="Kadr zbliżenia zamiast całego miasta.")] = False,
     out: Annotated[Path | None, typer.Option(help="Plik PNG (domyślnie w katalogu uruchomienia).")] = None,
     lang: Annotated[str, typer.Option(help="Język napisów: pl albo en.")] = "pl",
 ) -> None:
     """Pojedyncza klatka animacji jako PNG 1920x1080."""
     from sztafeta.viz.animate import render_frame
 
-    target = out if out is not None else run_dir / f"klatka_{int(t)}_{lang}.png"
+    moment = "zblizenie" if closeup and t is None else str(int(3600.0 if t is None else t))
+    target = out if out is not None else run_dir / f"klatka_{moment}_{lang}.png"
     try:
-        path = render_frame(run_dir, target, t, lang)
+        path = render_frame(run_dir, target, t, lang, closeup=closeup)
     except (FileNotFoundError, ValueError) as exc:
         typer.echo(f"Błąd: {exc}", err=True)
         raise typer.Exit(code=2) from exc

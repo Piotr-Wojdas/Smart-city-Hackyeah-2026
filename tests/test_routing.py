@@ -36,7 +36,7 @@ def test_alert_spreads_hop_by_hop_and_counts_hops() -> None:
     assert w.router.have[:, p].tolist() == [True, True, True]
     assert w.router.hops[:, p].tolist() == [0, 1, 2]
     assert not w.router.need_exchange(*_pair(1, 2))[0]  # obie strony już znają pakiet
-    assert [a for a, _ in w.router.new_alerts] == [0, 1, 2]
+    assert w.router.new_alerts == [(0, p, -1), (1, p, 0), (2, p, 1)]  # (odbiorca, pakiet, nadawca)
 
 
 def test_ttl_limits_number_of_hops() -> None:

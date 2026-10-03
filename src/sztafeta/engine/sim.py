@@ -211,7 +211,7 @@ class Simulation:
     def _handle_new_alerts(self) -> None:
         router = self.router
         ag = self.agents
-        for agent, p in router.new_alerts:
+        for agent, p, sender in router.new_alerts:
             alert = router.packets[p]
             assert isinstance(alert, Alert)
             first = bool(np.isnan(ag.informed_t[agent]))
@@ -229,6 +229,7 @@ class Simulation:
                     self.t,
                     EventType.ALERT_RECEIVED,
                     agent=agent,
+                    peer=sender,
                     packet=alert.pid,
                     seq=alert.seq,
                     hops=int(router.hops[agent, p]),
