@@ -78,7 +78,7 @@ def build_city(cfg: Mapping[str, Any], data_dir: Path) -> CityMap:
         if city_exists(place_dir):
             return load_city(place_dir)
         city = make_grid_city(**grid_args)
-        city.source = f"FALLBACK: brak danych w {place_dir.as_posix()} – {city.source}"
+        city.source = f"{city.source}; FALLBACK – brak danych OSM w {place_dir.as_posix()}"
         return city
     if kind == "grid":
         return make_grid_city(**grid_args)

@@ -36,11 +36,13 @@ from sztafeta.engine.model import (
     Lang,
     MsgType,
     Params,
+    Report,
     Role,
     Scenario,
     ScheduledAction,
     Verdict,
 )
+from sztafeta.engine.pczk import Pczk
 from sztafeta.engine.population import build_population
 from sztafeta.engine.rng import make_streams
 from sztafeta.engine.routing import Router
@@ -116,6 +118,7 @@ class Simulation:
 
         self.router = Router(params, self.agents, self.verifier, self.events, self.rng.crypto, self.hub_id)
         self.radio = ContactEngine(params, self.agents, self.router, self.rng.radio, self.events, self.hub_id)
+        self.pczk = Pczk(params.routing, self.keys.issuer, self.cert, self.router, self.events, self.hub_id)
         self.metrics = MetricsCollector(self.agents, self.router, self.radio)
 
         self._timeline: list[ScheduledAction] = sorted(scenario.timeline, key=lambda a: a.t)
@@ -186,10 +189,20 @@ class Simulation:
             self.note(act.label)
 
     def _after_radio(self) -> None:
-        """Skutki odebranych pakietów: pierwszy zweryfikowany alert uruchamia reakcję mieszkańca."""
+        """Skutki odebranych pakietów: reakcja na zweryfikowany alert, zgłoszenia oddane w hubie."""
         router = self.router
-        if not router.new_alerts:
-            return
+        if router.new_alerts:
+            self._handle_new_alerts()
+        if router.deliveries:
+            for delivery in router.deliveries:
+                report = router.packets[delivery.packet]
+                assert isinstance(report, Report)
+                self.pczk.receive(report, delivery.carrier, self.t)
+            router.deliveries.clear()
+        self.pczk.step(self.t)
+
+    def _handle_new_alerts(self) -> None:
+        router = self.router
         ag = self.agents
         for agent, p in router.new_alerts:
             alert = router.packets[p]
@@ -374,6 +387,10 @@ class Simulation:
             )
         return out
 
+    def pczk_dashboard(self) -> dict[str, Any]:
+        """Stan dashboardu sztabu: liczniki i lista zgłoszeń według pilności."""
+        return self.pczk.dashboard(self.t)
+
     def describe(self) -> dict[str, Any]:
         """Statyczna część stanu: mapa, cechy agentów, słowniki wyliczeń. Wysyłana raz."""
         city = self.scenario.city
@@ -451,6 +468,6 @@ class Simulation:
             },
             "links": self.radio.link_list(self.t),
             "alerts": self.alerts_view(),
-            "pczk": {},
+            "pczk": self.pczk.counters(),
             "metrics": dataclasses.asdict(row),
         }

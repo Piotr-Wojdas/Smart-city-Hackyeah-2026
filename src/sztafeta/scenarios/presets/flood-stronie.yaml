@@ -1,0 +1,29 @@
+# Scenariusz demo: powódź w Stroniu Śląskim (inspirowany wydarzeniami z 15.09.2024, nie rekonstrukcja).
+# Mapa: dane OpenStreetMap z katalogu data/stronie-slaskie (polecenie `sztafeta fetch-osm`).
+# Gdy danych nie ma, używana jest proceduralna siatka z sekcji `grid` (fallback).
+name: flood-stronie
+description: Powódź w Stroniu Śląskim – awaria sieci komórkowej, ewakuacja strefy wzdłuż rzeki
+
+map:
+  kind: osm
+  dir: stronie-slaskie
+  grid:
+    seed: 7
+    nx: 22
+    ny: 16
+    spacing: 90.0
+
+scenario:
+  start: "2024-09-15T06:00:00+02:00"
+  hub_name: "Urząd / PCZK"
+  evac_name: "Szkoła – punkt ewakuacji"
+  incident: "POWODZ-2024-09-15"
+  timeline:
+    - {t_min: 0, kind: network_down, label: "Awaria sieci komórkowej"}
+    - {t_min: 10, kind: issue_alert, hazard: FLOOD, action: EVACUATE, msg_type: ALERT}
+    - {t_min: 20, kind: dispatch_couriers}
+    - {t_min: 30, kind: troll_broadcast, forgery: BAD_SIGNATURE}
+    - {t_min: 180, kind: issue_alert, hazard: DAM_FAILURE, action: EVACUATE, msg_type: UPDATE}
+
+params:
+  duration_s: 21600
