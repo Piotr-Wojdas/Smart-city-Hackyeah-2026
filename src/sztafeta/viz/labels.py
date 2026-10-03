@@ -106,6 +106,47 @@ _PL: dict[str, str] = {
     "card_acks_note": "{pct:.0f}% dostarczonych zgłoszeń",
     "card_fake": "urządzeń uznało fałszywy alert za prawdziwy",
     "card_fake_note": "dostało go {received} urządzeń",
+    "axis_adoption": "adopcja: odsetek mieszkańców z zainstalowanym modułem",
+    "axis_minutes": "minuty od wydania alertu",
+    "axis_couriers": "liczba kurierów (ratowników i wolontariuszy z telefonem)",
+    "axis_reports_pct": "zgłoszenia dostarczone do PCZK",
+    "batch_note": (
+        "Scenariusz: {preset}. Linia: mediana z {seeds} seedów, pas: najmniejsza i największa "
+        "wartość. {fixed}"
+    ),
+    "fixed_range_couriers": "Zasięg {range_m:.0f} m, kurierów: {couriers}.",
+    "fixed_couriers": "Kurierów: {couriers}.",
+    "fixed_adoption_range": "Adopcja {adoption:.0f}%, zasięg {range_m:.0f} m.",
+    "series_t50": "czas do 50% telefonów z aplikacją",
+    "series_t90": "czas do 90% telefonów z aplikacją",
+    "reached_in": "{k} z {n} przebiegów",
+    "range_label": "zasięg {range_m:.0f} m",
+    "reach_batch_title": (
+        "Przy adopcji {adoption:.0f}% zasięg {short:.0f} m daje alert {short_pct} telefonów, "
+        "a {long:.0f} m: {long_pct}"
+    ),
+    "reach_batch_sub": (
+        "Odsetek telefonów z aplikacją, które mają zweryfikowany alert po {hours:.0f} h bez sieci komórkowej."
+    ),
+    "series_rep_end": "na koniec symulacji",
+    "series_rep_3h": "po 3 h",
+    "series_rep_1h": "po 1 h",
+    "couriers_title": "{few} kurierów dowozi do PCZK {few_pct} zgłoszeń, {many} kurierów: {many_pct}",
+    "couriers_sub": "Odsetek zgłoszeń mieszkańców, które dotarły do PCZK (czas liczony od awarii sieci).",
+    "time_title_hour": "Od adopcji {adoption:.0f}% połowa telefonów z aplikacją ma alert w ciągu godziny",
+    "time_title_slow": "Przy żadnej badanej adopcji alert nie dociera do połowy telefonów w ciągu godziny",
+    "time_sub_90": (
+        "90% telefonów w każdym przebiegu od adopcji {adoption:.0f}%. Brak punktu: progu nie osiągnięto."
+    ),
+    "time_sub_90_never": (
+        "Do 90% telefonów alert dociera tylko w części przebiegów. Brak punktu: progu nie osiągnięto."
+    ),
+    "couriers_title_1h": (
+        "Po 1 h w PCZK jest {few_pct} zgłoszeń przy {few} kurierach i {many_pct} przy {many}"
+    ),
+    "couriers_sub_1h": (
+        "Na koniec symulacji różnica maleje: {few_pct} i {many_pct}. Czas liczony od awarii sieci."
+    ),
     "hours": "h",
     "minutes": "min",
 }
@@ -212,6 +253,52 @@ _EN: dict[str, str] = {
     "card_acks_note": "{pct:.0f}% of delivered reports",
     "card_fake": "devices accepted the fake alert as genuine",
     "card_fake_note": "{received} devices received it",
+    "axis_adoption": "adoption: share of residents with the module installed",
+    "axis_minutes": "minutes since the alert was issued",
+    "axis_couriers": "number of couriers (rescuers and volunteers with a phone)",
+    "axis_reports_pct": "reports delivered to the crisis centre",
+    "batch_note": (
+        "Scenario: {preset}. Line: median of {seeds} seeds, band: lowest and highest value. {fixed}"
+    ),
+    "fixed_range_couriers": "Range {range_m:.0f} m, couriers: {couriers}.",
+    "fixed_couriers": "Couriers: {couriers}.",
+    "fixed_adoption_range": "Adoption {adoption:.0f}%, range {range_m:.0f} m.",
+    "series_t50": "time to 50% of phones with the app",
+    "series_t90": "time to 90% of phones with the app",
+    "reached_in": "{k} of {n} runs",
+    "range_label": "range {range_m:.0f} m",
+    "reach_batch_title": (
+        "At {adoption:.0f}% adoption a {short:.0f} m range reaches {short_pct} of phones, "
+        "{long:.0f} m: {long_pct}"
+    ),
+    "reach_batch_sub": (
+        "Share of phones with the app holding a verified alert after {hours:.0f} h without a mobile network."
+    ),
+    "series_rep_end": "at the end of the simulation",
+    "series_rep_3h": "after 3 h",
+    "series_rep_1h": "after 1 h",
+    "couriers_title": (
+        "{few} couriers bring {few_pct} of reports to the crisis centre, {many} couriers: {many_pct}"
+    ),
+    "couriers_sub": (
+        "Share of resident reports that reached the crisis centre (time since the network went down)."
+    ),
+    "time_title_hour": (
+        "From {adoption:.0f}% adoption half of the phones with the app get the alert within an hour"
+    ),
+    "time_title_slow": "At no tested adoption does the alert reach half of the phones within an hour",
+    "time_sub_90": (
+        "90% of phones in every run from {adoption:.0f}% adoption. No point: threshold not reached."
+    ),
+    "time_sub_90_never": (
+        "The alert reaches 90% of phones only in some runs. No point: threshold not reached."
+    ),
+    "couriers_title_1h": (
+        "After 1 h the centre has {few_pct} of reports with {few} couriers and {many_pct} with {many}"
+    ),
+    "couriers_sub_1h": (
+        "By the end the gap narrows: {few_pct} and {many_pct}. Time since the network went down."
+    ),
     "hours": "h",
     "minutes": "min",
 }

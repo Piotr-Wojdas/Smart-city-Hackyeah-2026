@@ -28,20 +28,28 @@ Pełny opis koncepcji: `docs/KONCEPT.md`. Założenia modelu i źródła: `docs/
 ## Architektura (trzymaj się jej)
 ```
 src/sztafeta/
-  engine/          rdzeń – bez matplotlib, bez I/O plików, bez print; tylko numpy/scipy/networkx/cryptography
+  engine/          rdzeń – bez matplotlib, bez I/O plików, bez print; tylko numpy/scipy/cryptography
     model.py       dataclasses: agenci, pakiety, parametry, scenariusz
-    rng.py         jedyne źródło losowości (numpy Generator z seeda)
-    mobility.py    ruch po grafie ulic (wektorowo w numpy), ewakuacja, trasy kurierów
-    contacts.py    wykrywanie kontaktów (scipy cKDTree), duty cycle, czas zestawienia, przepustowość
+    rng.py         jedyne źródło losowości (numpy Generator z seeda, niezależne strumienie)
+    graph.py       graf ulic jako tablice + najkrótsze ścieżki (scipy.sparse.csgraph)
+    geo.py         geohash, punkt w wielokącie, przeliczenie metrów na stopnie
+    population.py  budowa populacji (gospodarstwa domowe, adopcja, języki)
+    mobility.py    ruch po grafie ulic (wektorowo w numpy), trasy kurierów
+    behavior.py    spacery, reakcja na alert, ewakuacja, zgłoszenia, przekaz ustny
+    contacts.py    wykrywanie kontaktów (scipy cKDTree), duty cycle, czas zestawienia, przepustowość, bateria
     routing.py     epidemic (alerty, acki), spray-and-wait (zgłoszenia), bufor i priorytety
     crypto.py      Ed25519 (biblioteka cryptography), łańcuch zaufania, cache weryfikacji po id pakietu
+    pczk.py        sztab: deduplikacja zgłoszeń, potwierdzenia zbiorcze, dashboard
+    templates.py   kody alertu -> tekst w języku telefonu
+    events.py      strumień zdarzeń
     metrics.py     zbieranie metryk w czasie
     sim.py         klasa Simulation: step(), run(), snapshot() -> dict serializowalny do JSON
   scenarios/       presety (YAML) + ładowanie
   io/              zapis wyników: metrics.csv, events.jsonl, snapshots (format w docs/FORMAT.md)
   viz/             matplotlib: wykresy, animacja mapy (MP4/GIF), raport PNG dla slajdów
-  data/            pobieranie OSM (osmnx) i budowa grafu
-  cli.py           komendy: fetch-osm, run, batch, animate, inspect
+  data/            pobieranie OSM (osmnx), siatka proceduralna (fallback), zapis map
+  runner.py        jedno uruchomienie z presetu; batch.py – przegląd parametrów; wyniki.py – docs/WYNIKI.md
+  cli.py           komendy: fetch-osm, run, batch, animate, frame, charts, inspect
 tests/             pytest
 data/              wygenerowane grafy ulic (commitowane – symulacja ma działać offline)
 results/           wyniki uruchomień (nie commitujemy, poza wybranymi do prezentacji)
@@ -54,7 +62,9 @@ results/           wyniki uruchomień (nie commitujemy, poza wybranymi do prezen
 - `uv run mypy src` – typy
 - `uv run sztafeta fetch-osm --preset flood-stronie` – dane OSM do `data/`
 - `uv run sztafeta run --preset flood-stronie --seed 42` – jedno uruchomienie → `results/<run_id>/`
-- `uv run sztafeta animate results/<run_id>` – animacja mapy (MP4, fallback GIF)
+- `uv run sztafeta run --preset flood-stronie --seed 42 --baseline` – wariant bazowy „bez Sztafety”
+- `uv run sztafeta charts results/<run_id>` – wykresy do slajdów i karta wyników (PNG 16:9)
+- `uv run sztafeta animate results/<run_id>` – animacja mapy (MP4, fallback GIF); `frame` – jedna klatka PNG
 - `uv run sztafeta batch` – przegląd parametrów → `results/batch/*.csv` i `docs/WYNIKI.md`
 - `uv run sztafeta inspect results/<run_id> --agent <id> --t <s>` – stan telefonu agenta w danej chwili (JSON)
 

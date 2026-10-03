@@ -124,6 +124,26 @@ class MetricsCollector:
         self.rows.append(row)
         return row
 
+    def _row_at(self, t: float) -> MetricsRow | None:
+        """Ostatnia próbka nie późniejsza niż `t` (None, gdy symulacja była krótsza)."""
+        if not self.rows or self.rows[-1].t < t:
+            return None
+        found = self.rows[0]
+        for row in self.rows:
+            if row.t > t:
+                break
+            found = row
+        return found
+
+    def _at(self, t: float, column: str) -> float | None:
+        row = self._row_at(t)
+        return None if row is None else float(getattr(row, column))
+
+    def _share_at(self, t: float) -> float | None:
+        """Odsetek zgłoszeń wysłanych do chwili `t`, które do tej chwili dotarły do PCZK."""
+        row = self._row_at(t)
+        return None if row is None else _pct(row.reports_delivered, row.reports_created)
+
     def summary(self, alert_issued_t: float | None) -> dict[str, float | int | None]:
         """Kluczowe liczby uruchomienia (zawartość `summary.json`)."""
         ag = self._agents
@@ -151,6 +171,8 @@ class MetricsCollector:
             "t90_zone_app_s": since_alert(zone_app_t, 0.9, self._n_zone_app),
             "t50_evacuated_zone_s": since_alert(evac_t, 0.5, self._n_zone),
             "alert_reach_app": last.alert_reach_app,
+            "alert_reach_app_1h": self._at(3600.0, "alert_reach_app"),
+            "alert_reach_app_3h": self._at(10800.0, "alert_reach_app"),
             "alert_reach_all": last.alert_reach_all,
             "alert_reach_zone_app": last.alert_reach_zone_app,
             "alert_reach_zone_all": last.alert_reach_zone_all,
@@ -161,6 +183,8 @@ class MetricsCollector:
             "reports_created": last.reports_created,
             "reports_delivered": last.reports_delivered,
             "reports_delivered_pct": _pct(last.reports_delivered, last.reports_created),
+            "reports_delivered_pct_1h": self._share_at(3600.0),
+            "reports_delivered_pct_3h": self._share_at(10800.0),
             "need_help_created": last.need_help_created,
             "need_help_delivered": last.need_help_delivered,
             "need_help_delivered_pct": _pct(last.need_help_delivered, last.need_help_created),

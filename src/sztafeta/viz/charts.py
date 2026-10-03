@@ -6,6 +6,7 @@ seria „Sztafeta” wyróżniona kolorem, wariant bazowy szary. Każdy wykres m
 
 from __future__ import annotations
 
+import itertools
 import textwrap
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,9 +54,15 @@ def _figure() -> tuple[Figure, Axes]:
     return fig, ax
 
 
-def _frame(fig: Figure, lang: str, title: str, subtitle: str, run: Light) -> None:
-    fig.text(0.045, 0.945, title, fontsize=25, fontweight="bold", va="top")
-    fig.text(0.045, 0.868, subtitle, fontsize=15.5, color=style.INK2, va="top")
+def _frame(fig: Figure, lang: str, title: str, subtitle: str, note: str) -> None:
+    lines = textwrap.wrap(title, 70)
+    if len(lines) <= 1:
+        fig.text(0.045, 0.945, title, fontsize=25, fontweight="bold", va="top")
+        fig.text(0.045, 0.868, subtitle, fontsize=15.5, color=style.INK2, va="top")
+    else:
+        wrapped = "\n".join(textwrap.wrap(title, 78)[:2])
+        fig.text(0.045, 0.962, wrapped, fontsize=22, fontweight="bold", va="top", linespacing=1.15)
+        fig.text(0.045, 0.853, subtitle, fontsize=14.5, color=style.INK2, va="top")
     fig.text(
         0.955,
         0.052,
@@ -68,7 +75,7 @@ def _frame(fig: Figure, lang: str, title: str, subtitle: str, run: Light) -> Non
         bbox={"boxstyle": "round,pad=0.45", "facecolor": style.PANEL, "edgecolor": style.AXIS},
     )
     fig.text(0.045, 0.068, tr(lang, "model_note"), fontsize=12, color=style.INK2, va="center")
-    fig.text(0.045, 0.036, _run_note(lang, run), fontsize=11, color=style.MUTED, va="center")
+    fig.text(0.045, 0.036, note, fontsize=11, color=style.MUTED, va="center")
 
 
 def _run_note(lang: str, run: Light) -> str:
@@ -131,11 +138,14 @@ def _events(ax: Axes, lang: str, run: Light) -> None:
         )
 
 
-def _end_label(ax: Axes, x: float, y: float, text: str, color: str, dy: float = 0.0) -> None:
+def _end_label(
+    ax: Axes, x: float, y: float, text: str, color: str, dy: float = 0.0, label_y: float | None = None
+) -> None:
+    """Punkt na końcu linii i etykieta obok; `label_y` pozwala odsunąć sam napis od sąsiednich."""
     ax.plot([x], [y], marker="o", markersize=9, color=color, markeredgecolor=style.SURFACE, markeredgewidth=2)
     ax.annotate(
         text,
-        (x, y),
+        (x, y if label_y is None else label_y),
         xytext=(10, dy),
         textcoords="offset points",
         fontsize=15,
@@ -144,6 +154,16 @@ def _end_label(ax: Axes, x: float, y: float, text: str, color: str, dy: float = 
         va="center",
         annotation_clip=False,
     )
+
+
+def _declutter(values: list[float], gap: float) -> list[float]:
+    """Pozycje etykiet (w jednostkach osi) rozsunięte tak, by sąsiednie dzieliło co najmniej `gap`."""
+    order = sorted(range(len(values)), key=lambda k: values[k])
+    placed = list(values)
+    for prev, cur in itertools.pairwise(order):
+        if placed[cur] - placed[prev] < gap:
+            placed[cur] = placed[prev] + gap
+    return placed
 
 
 def _pct(value: float) -> str:
@@ -228,7 +248,7 @@ def _percent_chart(
             )
     ax.set_ylabel(ylabel, fontsize=15, labelpad=10)
     _legend(ax, entries)
-    _frame(fig, lang, title, subtitle, run)
+    _frame(fig, lang, title, subtitle, _run_note(lang, run))
     return _save(fig, out)
 
 
@@ -307,7 +327,7 @@ def plot_reports(run: Light, base: Light | None, out: Path, lang: str = "pl") ->
         need_created=s["need_help_created"],
         acks=s["acks_received"],
     )
-    _frame(fig, lang, title, subtitle, run)
+    _frame(fig, lang, title, subtitle, _run_note(lang, run))
     return _save(fig, out)
 
 
@@ -431,7 +451,7 @@ def plot_scorecard(run: Light, base: Light | None, out: Path, lang: str = "pl") 
         battery=float(s["battery_mean"]),
         contacts=s["contacts_total"],
     )
-    _frame(fig, lang, tr(lang, "card_title"), subtitle, run)
+    _frame(fig, lang, tr(lang, "card_title"), subtitle, _run_note(lang, run))
     return _save(fig, out)
 
 

@@ -1,4 +1,4 @@
-"""Interfejs wiersza poleceń: `sztafeta fetch-osm | run | animate | frame | charts | inspect`."""
+"""Interfejs wiersza poleceń: `sztafeta fetch-osm | run | batch | animate | frame | charts | inspect`."""
 
 from __future__ import annotations
 
@@ -231,3 +231,69 @@ def fetch_osm(
     )
     typer.echo(f"Hub: {meta['hub_note']}. Punkt ewakuacji: {meta['evac_note']}.")
     typer.echo("Dane: © autorzy OpenStreetMap, licencja ODbL.")
+
+
+@app.command()
+def batch(
+    preset: Annotated[str, typer.Option(help="Preset bazowy przeglądu.")] = "flood-stronie",
+    adoption: Annotated[str, typer.Option(help="Adopcja w procentach, po przecinku.")] = "5,10,20,30,50",
+    range_m: Annotated[
+        str, typer.Option("--range", help="Zasięg radia w metrach, po przecinku.")
+    ] = "25,40,80",
+    couriers: Annotated[str, typer.Option(help="Liczba kurierów, po przecinku.")] = "2,5,10",
+    seeds: Annotated[int, typer.Option(help="Liczba seedów na kombinację (seedy 1..N).")] = 5,
+    workers: Annotated[int | None, typer.Option(help="Liczba procesów (domyślnie: rdzenie - 1).")] = None,
+    out: Annotated[Path, typer.Option(help="Katalog na wyniki przeglądu.")] = Path("results/batch"),
+    docs: Annotated[Path, typer.Option(help="Plik z opisem wyników.")] = Path("docs/WYNIKI.md"),
+    until: Annotated[float | None, typer.Option(help="Skróć każde uruchomienie do tylu sekund.")] = None,
+    quick: Annotated[
+        bool, typer.Option("--quick", help="Mała siatka do sprawdzenia, czy wszystko działa.")
+    ] = False,
+) -> None:
+    """Przegląd parametrów -> results/batch/*.csv, wykresy i docs/WYNIKI.md."""
+    from sztafeta.batch import BatchSpec, parse_list, percent_list, run_batch, write_outputs
+
+    try:
+        spec = BatchSpec(
+            preset=preset,
+            adoption=percent_list(parse_list(adoption, float)),
+            ranges=parse_list(range_m, float),
+            couriers=parse_list(couriers, int),
+            seeds=list(range(1, seeds + 1)),
+            duration_s=until,
+        )
+    except ValueError as exc:
+        typer.echo(f"Błąd: zła lista wartości ({exc})", err=True)
+        raise typer.Exit(code=2) from exc
+    if quick:
+        spec.adoption, spec.ranges, spec.couriers, spec.seeds = [0.10, 0.30], [40.0], [5], [1, 2]
+        spec.duration_s = until or 5400.0
+    if not (spec.adoption and spec.ranges and spec.couriers and spec.seeds):
+        typer.echo(
+            "Błąd: każda lista (adopcja, zasięg, kurierzy, seedy) musi mieć co najmniej jedną wartość",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+    spec.baseline_adoption = 0.30 if 0.30 in spec.adoption else spec.adoption[-1]
+    spec.baseline_range = 40.0 if 40.0 in spec.ranges else spec.ranges[0]
+    spec.baseline_couriers = 5 if 5 in spec.couriers else spec.couriers[0]
+    total = len(spec.jobs())
+    typer.echo(f"Przegląd: {total} uruchomień (preset {preset}).")
+
+    def progress(done: int, count: int) -> None:
+        if done == count or done % max(count // 20, 1) == 0:
+            typer.echo(f"  {done} z {count}")
+
+    try:
+        runs = run_batch(spec, workers, progress)
+    except (FileNotFoundError, ValueError) as exc:
+        typer.echo(f"Błąd: {exc}", err=True)
+        raise typer.Exit(code=2) from exc
+    paths = write_outputs(runs, spec, out, None if quick else docs)
+    for path in paths:
+        typer.echo(f"Zapisano: {path}")
+    worst = int(runs["fake_verified_devices"].max())
+    typer.echo(f"Fałszywe alerty uznane za zweryfikowane (maksimum ze wszystkich uruchomień): {worst}")
+    if worst > 0:
+        typer.echo("UWAGA: to błąd modelu albo kryptografii – zgłoś go.", err=True)
+        raise typer.Exit(code=1)
