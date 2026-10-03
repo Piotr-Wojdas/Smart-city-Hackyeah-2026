@@ -10,7 +10,7 @@
 - zasięg radia: 25 m, 40 m, 80 m
 - liczba kurierów: 2, 5, 10
 - seedy: 5 na kombinację (1–5); łącznie 230 uruchomień
-- wersja kodu: `0.1.0+7329892`
+- wersja kodu: `0.1.0+ece1190`
 
 W tabelach podajemy **medianę między seedami**, a w nawiasie **najmniejszą i największą wartość** (rozrzut). Czasy liczymy od wydania alertu.
 

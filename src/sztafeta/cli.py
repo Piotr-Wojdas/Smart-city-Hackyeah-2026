@@ -99,8 +99,14 @@ def animate(
         Path | None, typer.Option(help="Plik wynikowy (domyślnie w katalogu uruchomienia).")
     ] = None,
     lang: Annotated[str, typer.Option(help="Język napisów: pl albo en.")] = "pl",
-    fps: Annotated[int, typer.Option(help="Klatki na sekundę.")] = 24,
-    every: Annotated[int, typer.Option(help="Co który snapshot staje się klatką (1 = wszystkie).")] = 3,
+    fps: Annotated[int, typer.Option(help="Klatki na sekundę.")] = 15,
+    every: Annotated[
+        int | None,
+        typer.Option(
+            help="Co który snapshot staje się klatką; domyślnie gęsto przez pierwsze 90 min, potem rzadko."
+        ),
+    ] = None,
+    hold: Annotated[float, typer.Option(help="Zatrzymanie obrazu (s) przy każdym kluczowym momencie.")] = 1.2,
     dpi: Annotated[int, typer.Option(help="120 = 1920x1080.")] = 120,
     t_from: Annotated[float | None, typer.Option(help="Początek fragmentu (sekundy czasu modelu).")] = None,
     t_to: Annotated[float | None, typer.Option(help="Koniec fragmentu (sekundy czasu modelu).")] = None,
@@ -114,7 +120,7 @@ def animate(
             typer.echo(f"  klatka {done} z {total}")
 
     try:
-        path = render_animation(run_dir, out, lang, fps, every, dpi, t_from, t_to, fmt, progress)
+        path = render_animation(run_dir, out, lang, fps, every, dpi, t_from, t_to, fmt, progress, hold)
     except (FileNotFoundError, ValueError, RuntimeError) as exc:
         typer.echo(f"Błąd: {exc}", err=True)
         raise typer.Exit(code=2) from exc

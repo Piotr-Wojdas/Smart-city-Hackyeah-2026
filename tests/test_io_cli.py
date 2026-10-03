@@ -113,6 +113,45 @@ def test_frame_and_animation_render(run_dir: Path, tmp_path: Path) -> None:
 
     png = render_frame(run_dir, tmp_path / "klatka.png", t=900.0, lang="en", dpi=50)
     assert png.stat().st_size > 10_000
-    movie = render_animation(run_dir, tmp_path / "anim", every=30, dpi=50, fps=10)
+    movie = render_animation(run_dir, tmp_path / "anim", every=30, dpi=50, fps=10, hold_s=0.2)
     assert movie.suffix in (".mp4", ".gif")
     assert movie.stat().st_size > 5_000
+
+
+def test_story_is_ordered_and_ends_with_summary(run_dir: Path) -> None:
+    from sztafeta.io.reader import load_run
+    from sztafeta.viz.animate import _STORY_EVENTS, build_story
+
+    run = load_run(run_dir, _STORY_EVENTS)
+    story = build_story(run, "pl")
+    times = [t for t, _ in story]
+    texts = [text for _, text in story]
+    assert times == sorted(times)
+    assert texts[0] == "Awaria sieci komórkowej"
+    assert texts[-1].startswith("Bilans:") and times[-1] == run.t[-1]
+    assert len(texts) == len(set(texts))  # każdy moment pojawia się raz
+    # kurier nie może „zbierać zgłoszeń”, zanim wyruszył
+    assert texts.index("Kurierzy wyruszają w teren") < texts.index("Kurier zbiera zgłoszenia")
+    # „alert idzie od telefonu do telefonu” dopiero wtedy, gdy widać go w liczniku zasięgu
+    relay_t = times[texts.index("Alert idzie od telefonu do telefonu")]
+    row = run.metrics[run.metrics["t"] == relay_t].iloc[0]
+    assert row["alert_reach_app"] >= 5.0
+
+
+def test_frame_plan_is_dense_early_and_holds_on_key_moments() -> None:
+    import numpy as np
+
+    from sztafeta.viz.animate import frame_plan
+
+    times = np.arange(0.0, 21601.0, 10.0)
+    plan = frame_plan(times, [600.0, 7200.0], 0.0, None, None, None, hold_frames=5)
+    assert plan == sorted(plan)  # czas nigdy się nie cofa
+    assert plan[0] == 0 and plan[-1] == times.size - 1
+    unique = sorted(set(plan))
+    early = [k for k in unique if times[k] < 5400.0]
+    late = [k for k in unique if times[k] >= 5400.0]
+    assert np.diff(early).max() == 2 and np.diff(late[:-1]).max() == 6
+    assert plan.count(60) == 6 and plan.count(720) == 6  # zatrzymanie: klatka + 5 powtórzeń
+    uniform = frame_plan(times, [], 0.0, 3, 600.0, 1200.0, hold_frames=5)
+    assert [float(times[k]) for k in uniform] == [600.0 + 30.0 * k for k in range(21)]
+    assert frame_plan(times, [], 0.0, None, 50000.0, 60000.0, hold_frames=0) == []

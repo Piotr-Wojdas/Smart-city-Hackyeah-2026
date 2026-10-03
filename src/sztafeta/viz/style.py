@@ -15,7 +15,7 @@ SURFACE = "#fcfcfb"
 PANEL = "#f4f3ef"
 INK = "#0b0b0b"
 INK2 = "#52514e"
-MUTED = "#898781"
+MUTED = "#6f6e69"
 GRID = "#e1e0d9"
 AXIS = "#c3c2b7"
 STREET = "#d2d1c9"
@@ -46,16 +46,22 @@ class Marker:
 # indeks = AgentState: NO_APP, UNINFORMED, INFORMED, EVACUATING, SAFE, NEED_HELP
 STATE_MARKERS: tuple[Marker, ...] = (
     Marker(".", 22.0, NO_APP, "none", 0.0),
-    Marker("o", 16.0, SURFACE, MUTED, 1.0),
+    Marker("o", 22.0, SURFACE, INK2, 1.3),
     Marker("o", 20.0, BLUE, "none", 0.0),
     Marker("^", 34.0, YELLOW, INK, 0.5),
     Marker("s", 22.0, AQUA, "none", 0.0),
     Marker("P", 90.0, RED, SURFACE, 0.8),
 )
 
+# potrzebuje pomocy, ale nie ma aplikacji: sztab o tej osobie nie wie
+NEED_NO_APP = Marker("P", 60.0, SURFACE, RED, 1.4)
+# telefon, który właśnie odebrał zweryfikowany alert (pierścień) albo odrzucił fałszywkę (krzyżyk)
+RING = Marker("o", 260.0, "none", BLUE, 2.0)
+REJECT = Marker("x", 46.0, INK, INK, 1.8)
+
 COURIER = Marker("D", 150.0, VIOLET, SURFACE, 1.6)
 TROLL = Marker("X", 190.0, INK, SURFACE, 1.4)
-HUB = Marker("*", 620.0, INK, SURFACE, 1.6)
+HUB = Marker("*", 520.0, INK, SURFACE, 1.6)
 EVAC = Marker("p", 420.0, SURFACE, AQUA, 3.0)
 
 
