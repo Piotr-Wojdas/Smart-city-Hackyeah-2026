@@ -16,8 +16,7 @@ class EventType(StrEnum):
     ALERT_REJECTED = "alert_rejected"
     TROLL_BROADCAST = "troll_broadcast"
     WORD_OF_MOUTH = "word_of_mouth"
-    CONTACT_START = "contact_start"
-    CONTACT_END = "contact_end"
+    CONTACT = "contact"  # emitowane na końcu kontaktu; zawiera czas rozpoczęcia i powód zakończenia
     TRANSFER = "transfer"
     EVACUATION_START = "evacuation_start"
     EVACUATION_DONE = "evacuation_done"

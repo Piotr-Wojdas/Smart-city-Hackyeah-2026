@@ -113,8 +113,10 @@ Reguły kontaktu:
 - początek okna skanowania jest losowany w każdym cyklu (przy stałych fazach część sąsiadów nigdy by się nie spotkała);
 - zestawione połączenie trwa do końca wymiany, utraty zasięgu albo `max_session_s`, także po końcu okna;
 - zerwanie kontaktu przerywa transfer: pakiety, które nie zdążyły przejść, nie są dostarczone;
-- urządzenia nie łączą się ponownie, dopóki stan żadnego z nich się nie zmienił (skrót zawartości bufora
-  rozgłaszany przy wykrywaniu).
+- urządzenia zestawiają połączenie tylko wtedy, gdy mają sobie coś do przekazania. Zakładamy, że wiedzą
+  to ze skrótu zawartości bufora rozgłaszanego przy wykrywaniu. **Uproszczenie na korzyść Sztafety:**
+  jałowych połączeń (skrót różny, a nic do wysłania) i ich kosztu baterii nie modelujemy;
+- gdy w zasięgu jest więcej chętnych niż wolnych połączeń, pary są wybierane losowo.
 
 ## 7. Pakiety i routing
 
