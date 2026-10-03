@@ -426,6 +426,10 @@ class BehaviorParams:
 @dataclass(slots=True)
 class PopulationParams:
     n_residents: int = 3000
+    # zwarta zabudowa: ludzie mieszkają tylko w tej części budynków, wokół której zabudowa jest
+    # najgęstsza (1.0 = we wszystkich budynkach)
+    settled_share: float = 1.0
+    settled_radius_m: float = 150.0  # promień, w którym liczona jest gęstość zabudowy wokół budynku
     n_couriers: int = 5
     n_trolls: int = 1
     courier_vehicle_share: float = 0.5

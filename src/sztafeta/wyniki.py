@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING, Any
 
 import pandas as pd
 
+from sztafeta.scenarios import read_preset
+
 if TYPE_CHECKING:
     from sztafeta.batch import BatchSpec
 
@@ -29,6 +31,8 @@ SENSITIVITY = (
     ("scan_5_60", "Okno skanowania 5 s co 60 s (zamiast 10 s)"),
     ("scan_5_120", "Okno skanowania 5 s co 120 s"),
     ("setup_8_15", "Zestawianie połączenia 8–15 s (zamiast 3–8 s)"),
+    ("spread_out", "Zabudowa rozproszona: mieszkańcy we wszystkich budynkach"),
+    ("comply_85", "Posłuszeństwo wobec alertu 85%"),
 )
 
 
@@ -56,6 +60,21 @@ def _pct_cell(row: pd.Series[Any], metric: str) -> str:
 def _med(row: pd.Series[Any], metric: str, digits: int = 0) -> str:
     value = row[f"{metric}_med"]
     return "–" if value is None or pd.isna(value) else f"{float(value):.{digits}f}"
+
+
+def preset_settings(preset: str) -> dict[str, Any]:
+    """Parametry, które preset ustawia inaczej niż domyślne w modelu, jako „sekcja.pole” -> wartość."""
+    flat: dict[str, Any] = {}
+
+    def walk(node: Any, path: str) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                walk(value, f"{path}.{key}" if path else str(key))
+        else:
+            flat[path] = node
+
+    walk(read_preset(preset).get("params", {}), "")
+    return flat
 
 
 def _table(header: list[str], rows: list[list[str]]) -> str:
@@ -151,6 +170,10 @@ def write_wyniki(
     couriers_only = variant("couriers_only")
     no_wom = variant("no_wom")
     household = variant("wom_household")
+    settings = preset_settings(spec.preset)
+    # gęsta zabudowa i podniesione posłuszeństwo to założenia presetu: pokazujemy, ile od nich zależy
+    spread = variant("spread_out") if float(settings.get("population.settled_share", 1.0)) < 1.0 else None
+    comply = variant("comply_85") if float(settings.get("behavior.p_comply", 0.85)) != 0.85 else None
     short = _one(summary, FULL, ref_a, min(spec.ranges), ref_c) if min(spec.ranges) < ref_r else None
     out: list[str] = []
     add = out.append
@@ -186,6 +209,10 @@ def write_wyniki(
         f"{100 * ref_a:.0f}%, zasięg {ref_r:.0f} m, {ref_c} kurierów) "
         "dodatkowo: wariant bez Sztafety, same telefony, sami kurierzy i warianty wrażliwości (punkty 5 i 6)"
     )
+    if settings:
+        listed = ", ".join(f"`{key}={value}`" for key, value in settings.items() if key != "duration_s")
+        if listed:
+            add(f"- ustawienia presetu inne niż domyślne w modelu (opis w MODEL.md): {listed}")
     add(f"- wersja kodu: `{version}`")
     add("")
     add(
@@ -259,6 +286,19 @@ def write_wyniki(
             text += (
                 f" To założenie modelu: bez przekazu ustnego ewakuuje się {_med(no_wom, 'evacuated_zone')}%, "
                 f"a gdy informują się tylko domownicy – {_med(household, 'evacuated_zone')}%."
+            )
+        if spread is not None:
+            text += (
+                " Wynik zależy też od gęstości zabudowy przyjętej w scenariuszu: gdy mieszkańcy są "
+                "rozproszeni po wszystkich budynkach, do punktu ewakuacji dociera "
+                f"{_med(spread, 'evacuated_zone')}%, a alert ma {_med(spread, 'alert_reach_app')}% "
+                "telefonów z aplikacją."
+            )
+        if comply is not None:
+            assumed = 100 * float(settings["behavior.p_comply"])
+            text += (
+                f" Przy posłuszeństwie wobec alertu 85% zamiast {assumed:.0f}% "
+                f"dociera {_med(comply, 'evacuated_zone')}%."
             )
         add(text)
     worst = int(relay_runs["fake_verified_devices"].max())

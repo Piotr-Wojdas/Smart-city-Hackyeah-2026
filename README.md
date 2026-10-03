@@ -99,7 +99,11 @@ Oś czasu (czas modelu, 6 h):
 | T+3 h | nowa wersja alertu zastępuje poprzednią |
 
 Scenariusz nie ma wydzielonej strefy zagrożenia: alert dotyczy **całego miasta** (`scenario.area: city`
-w presecie; wartość `zone` przywraca strefę wzdłuż rzeki). Mieszkańcy, którzy dostali zweryfikowany
+w presecie; wartość `zone` przywraca strefę wzdłuż rzeki). Miasto jest **gęsto zaludnione**: 4956
+mieszkańców (pełna liczba wg GUS) mieszka w zwartej zabudowie, czyli w 25% budynków o najgęstszym
+otoczeniu (`population.settled_share`), a 92% poinformowanych rusza do punktu ewakuacji
+(`behavior.p_comply`). To założenia scenariusza, nie zmiana zasad radia; ile od nich zależy, pokazuje
+[docs/WYNIKI.md](docs/WYNIKI.md) (punkt 6). Mieszkańcy, którzy dostali zweryfikowany
 alert, po czasie reakcji idą do punktu ewakuacji; część zostaje i zgłasza potrzebę pomocy. Kurierzy
 przekazują alert telefonom, które mijają, zbierają zgłoszenia po drodze i oddają je w hubie, a PCZK
 odsyła potwierdzenia zbiorcze.
@@ -168,6 +172,9 @@ uv run pytest
   baterii nie liczymy (uproszczenie na korzyść Sztafety).
 - Scenariusz demo ewakuuje całe miasto do jednego punktu, którego pojemności nie modelujemy; nie ma
   mapy zalewowej ani zalanych i nieprzejezdnych ulic.
+- Gęste zaludnienie scenariusza demo (zwarta zabudowa, posłuszeństwo 92%) to założenia dobrane tak,
+  żeby pokazać miasto, w którym system działa dobrze; przy rozproszonej zabudowie zasięg i ewakuacja
+  są wyraźnie niższe (WYNIKI.md, punkt 6).
 - Zachowania ludzi (czas reakcji, posłuszeństwo wobec alertu, zgłoszenia) to założenia zespołu,
   nie dane z badań.
 - Wariant bazowy „bez Sztafety” nie obejmuje syren, megafonów ani obchodu służb – jest dolną granicą.

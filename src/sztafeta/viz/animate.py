@@ -61,7 +61,7 @@ _MAP_BOX = (0.012, 0.150, 0.672, 0.780)
 _LEGEND_BOX = (0.012, 0.058, 0.672, 0.082)
 _PANEL_BOX = (0.698, 0.0, 0.302, 1.0)
 _STORY_LINES = 8
-_END_SHARE = 0.9  # film kończy się, gdy do punktu ewakuacji dotarło 90% tych, którzy tam dotrą
+_END_SHARE = 0.98  # film kończy się, gdy do punktu ewakuacji dotarło 98% tych, którzy tam dotrą
 _END_TAIL_S = 300.0  # tyle czasu modelu film trwa jeszcze po ostatnim wpisie narracji
 _CLOSE_MIN_HALF_WIDTH_M = 75.0  # zbliżenie nie jest ciaśniejsze niż 150 m szerokości
 _CLOSE_MARGIN_M = 35.0
@@ -459,6 +459,7 @@ class MapAnimation:
         ax.set_aspect("equal")
 
         self._site_labels: list[Annotation] = []
+        self._site_marks: list[PathCollection] = []  # znaczniki huba i punktu ewakuacji
         if not self._whole_city:
             zone = np.asarray(m["hazard_zone"], dtype=np.float64)
             ax.add_patch(
@@ -566,15 +567,17 @@ class MapAnimation:
     def _site(
         self, x: float, y: float, marker: style.Marker, name: str, zorder: float, offset: tuple[float, float]
     ) -> Annotation:
-        self.ax.scatter(
-            [x],
-            [y],
-            s=marker.size,
-            marker=marker.marker,
-            facecolors=marker.face,
-            edgecolors=marker.edge,
-            linewidths=marker.lw,
-            zorder=zorder,
+        self._site_marks.append(
+            self.ax.scatter(
+                [x],
+                [y],
+                s=marker.size,
+                marker=marker.marker,
+                facecolors=marker.face,
+                edgecolors=marker.edge,
+                linewidths=marker.lw,
+                zorder=zorder,
+            )
         )
         return self._label(x, y, name, style.INK, offset, leader=True)
 
@@ -761,6 +764,8 @@ class MapAnimation:
         self._place(self._ring_sc, xy[self._got_agent[fresh]], style.RING, gain)
         for label in self._site_labels:
             label.set_visible(z < 0.5)
+        for mark in self._site_marks:
+            mark.set_alpha(1.0 - z)  # w zbliżeniu znaczniki miejsc nie zasłaniają telefonów i linii
         self._caption.set_alpha(z)
         bbox = self._caption.get_bbox_patch()
         if bbox is not None:

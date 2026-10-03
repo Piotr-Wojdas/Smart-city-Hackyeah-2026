@@ -2,7 +2,8 @@
 
 Oprócz pełnej siatki liczone są warianty odniesienia przy ustawieniach domyślnych: bez Sztafety,
 same telefony (bez kurierów), sami kurierzy (bez przekazywania telefon–telefon) oraz warianty
-wrażliwości na założenia (przekaz ustny, duty cycle, czas zestawienia połączenia).
+wrażliwości na założenia (przekaz ustny, duty cycle, czas zestawienia połączenia, gęstość zabudowy,
+posłuszeństwo wobec alertu).
 
 Wynik: `results/batch/runs.csv` (wiersz na uruchomienie), `summary.csv` (mediana i rozrzut między
 seedami), wykresy w `plots/` oraz `docs/WYNIKI.md`. Wszystkie liczby to wyniki modelu.
@@ -37,6 +38,8 @@ REFERENCE_VARIANTS: tuple[tuple[str, tuple[str, ...], bool], ...] = (
     ("scan_5_60", ("radio.scan_window_s=5",), False),
     ("scan_5_120", ("radio.scan_window_s=5", "radio.scan_period_s=120"), False),
     ("setup_8_15", ("radio.setup_min_s=8", "radio.setup_max_s=15"), False),
+    ("spread_out", ("population.settled_share=1.0",), False),
+    ("comply_85", ("behavior.p_comply=0.85",), False),
 )
 
 # metryki agregowane między seedami (mediana, minimum, maksimum)

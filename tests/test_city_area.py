@@ -13,7 +13,8 @@ from typer.testing import CliRunner
 from sztafeta.batch import BatchSpec, run_batch, write_outputs
 from sztafeta.cli import app
 from sztafeta.engine.geo import points_in_polygon
-from sztafeta.engine.model import Params, Role, Scenario
+from sztafeta.engine.model import Params, PopulationParams, Role, Scenario
+from sztafeta.engine.population import settled_buildings
 from sztafeta.engine.sim import Simulation
 from sztafeta.runner import run_once
 from sztafeta.scenarios import load_preset, read_preset
@@ -182,3 +183,47 @@ def test_results_document_without_zone_has_no_zone_columns(city_preset: str, tmp
         assert phrase not in text, phrase
     assert "mieszkańców miasta" in text and "Mieszkańcy w punkcie ewakuacji" in text
     assert "co najmniej 90% telefonów z aplikacją**" in text
+
+
+def test_compact_settlement_puts_residents_in_the_densest_quarter_of_buildings() -> None:
+    params, scenario = load_preset("test-small", overrides=["population.settled_share=0.25"])
+    scenario.city.hazard_zone = np.empty((0, 2))
+    city = scenario.city
+    n = city.buildings_xy.shape[0]
+    everywhere = settled_buildings(city, PopulationParams())
+    assert everywhere.all() and everywhere.shape == (n,)  # domyślnie ludzie mieszkają we wszystkich budynkach
+    lived_in = settled_buildings(city, params.population)
+    assert int(lived_in.sum()) == round(0.25 * n)
+    assert np.array_equal(lived_in, settled_buildings(city, params.population))  # wybór jest powtarzalny
+    # zostają budynki o najgęstszym otoczeniu (suma wag budynków w promieniu settled_radius_m)
+    tree = cKDTree(city.buildings_xy)
+    local = np.array(
+        [
+            city.building_weight[idx].sum()
+            for idx in tree.query_ball_point(city.buildings_xy, params.population.settled_radius_m)
+        ]
+    )
+    assert local[lived_in].min() >= local[~lived_in].max()
+
+    sim = Simulation(params, scenario, 42)
+    ag = sim.agents
+    homes = ag.home_xy[ag.residents]
+    to_lived_in, _ = cKDTree(city.buildings_xy[lived_in]).query(homes)
+    assert to_lived_in.max() < 20.0  # każdy dom leży przy zamieszkanym budynku (rozrzut wokół budynku: 3 m)
+    # kurierzy objeżdżają tylko ulice przy zamieszkanych budynkach
+    nodes = sim._patrol_nodes()
+    assert set(nodes.tolist()) == set(city.graph.nearest_nodes(city.buildings_xy[lived_in]).tolist())
+    assert nodes.size < np.unique(city.graph.nearest_nodes(city.buildings_xy)).size
+
+
+def test_demo_preset_is_a_densely_populated_town_with_unchanged_radio_rules(tmp_path: Path) -> None:
+    dense, _ = load_preset("flood-stronie", data_dir=tmp_path)
+    plain = Params()
+    assert dense.population.n_residents == 4956 and dense.population.settled_share == 0.25
+    assert dense.behavior.p_comply == 0.92 and plain.behavior.p_comply == 0.85
+    assert plain.population.n_residents == 3000 and plain.population.settled_share == 1.0
+    # zagęszczenie nie zmienia zasad rozchodzenia się sygnału: radio, routing, bateria i adopcja są domyślne
+    assert dense.radio == plain.radio and dense.routing == plain.routing and dense.battery == plain.battery
+    assert dense.behavior.adoption == plain.behavior.adoption
+    for name in ("wom_enabled", "wom_prob_per_min", "wom_range_m", "wom_household_only", "p_need_help_zone"):
+        assert getattr(dense.behavior, name) == getattr(plain.behavior, name), name

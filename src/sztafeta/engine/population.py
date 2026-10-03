@@ -3,8 +3,35 @@
 from __future__ import annotations
 
 import numpy as np
+from scipy.spatial import cKDTree
 
-from sztafeta.engine.model import AgentArrays, AgentState, CityMap, FloatArr, Params, Role
+from sztafeta.engine.model import (
+    AgentArrays,
+    AgentState,
+    BoolArr,
+    CityMap,
+    FloatArr,
+    Params,
+    PopulationParams,
+    Role,
+)
+
+
+def settled_buildings(city: CityMap, pop: PopulationParams) -> BoolArr:
+    """Budynki, w których w scenariuszu mieszkają ludzie.
+
+    Przy `settled_share` < 1 zostaje tylko ta część budynków, wokół której zabudowa jest najgęstsza
+    (suma wag budynków w promieniu `settled_radius_m`); rozproszona zabudowa na obrzeżach jest pusta.
+    """
+    n = city.buildings_xy.shape[0]
+    if pop.settled_share >= 1.0:
+        return np.ones(n, dtype=np.bool_)
+    around = cKDTree(city.buildings_xy).query_ball_point(city.buildings_xy, pop.settled_radius_m)
+    local = np.array([float(city.building_weight[idx].sum()) for idx in around])
+    keep = np.zeros(n, dtype=np.bool_)
+    # sortowanie stabilne: przy równej gęstości decyduje kolejność budynków na mapie (powtarzalnie)
+    keep[np.argsort(-local, kind="stable")[: max(round(pop.settled_share * n), 1)]] = True
+    return keep
 
 
 def build_population(params: Params, city: CityMap, rng: np.random.Generator) -> tuple[AgentArrays, FloatArr]:
@@ -33,7 +60,8 @@ def build_population(params: Params, city: CityMap, rng: np.random.Generator) ->
                 break
     sizes = np.asarray(sizes_list, dtype=np.int64)
     n_house = sizes.size
-    weights = city.building_weight / city.building_weight.sum()
+    settled = np.where(settled_buildings(city, pop), city.building_weight, 0.0)
+    weights = settled / settled.sum()
     house_building = rng.choice(city.buildings_xy.shape[0], size=n_house, p=weights)
     house_xy = city.buildings_xy[house_building] + rng.normal(0.0, 3.0, size=(n_house, 2))
     household_res = np.repeat(np.arange(n_house, dtype=np.int64), sizes)

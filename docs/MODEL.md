@@ -57,7 +57,9 @@ i można go nadpisać z linii poleceń: `sztafeta run --set radio.range_m=80`.
 
 | Parametr | Wartość | Uzasadnienie | Źródło |
 |---|---|---|---|
-| `population.n_residents` | 3000 | ok. 60% liczby mieszkańców miasta (4956 osób, GUS, stan na 31.12.2024), więc gęstość telefonów jest zaniżona (konserwatywnie); mieści się w limicie czasu obliczeń | założenie zespołu; liczba ludności: GUS za polskawliczbach.pl |
+| `population.n_residents` | domyślnie 3000; **w scenariuszu demo 4956** | 4956 to pełna liczba mieszkańców miasta (GUS, stan na 31.12.2024). Domyślne 3000 (ok. 60%) zaniża gęstość telefonów i jest używane w testach oraz presetach bez tego ustawienia | liczba ludności: GUS za polskawliczbach.pl |
+| `population.settled_share` | domyślnie 1,0; **w scenariuszu demo 0,25** | zwarta zabudowa: ludzie mieszkają tylko w tej części budynków, wokół której zabudowa jest najgęstsza; przy 0,25 jest to 256 z 1025 budynków, a rozproszone domy na obrzeżach są puste. Wartość dobrana tak, żeby scenariusz demo pokazywał gęsto zaludnione miasto – nie odwzorowuje rzeczywistego rozkładu ludności Stronia | założenie zespołu |
+| `population.settled_radius_m` | 150 m | promień, w którym liczona jest gęstość zabudowy wokół budynku (suma wag budynków) | założenie zespołu |
 | `behavior.household_mean` | 2,5 osoby | rząd wielkości średniego gospodarstwa domowego w Polsce | GUS, NSP 2021 (ok. 2,5–2,6) |
 | `behavior.adoption` | 30% | odsetek mieszkańców z zainstalowanym **i działającym** modułem (Bluetooth włączony, aplikacja może pracować w tle); kluczowa niewiadoma, dlatego przegląd 5–50% | założenie zespołu |
 | `behavior.lang_shares` | PL 90%, UK 5%, EN 2%, DE 2%, CS 1% | język telefonu; region przygraniczny i turystyczny | założenie zespołu |
@@ -66,7 +68,15 @@ i można go nadpisać z linii poleceń: `sztafeta run --set radio.range_m=80`.
 | `population.n_trolls` | 1 | jeden agent rozsyłający fałszywe alerty; skanuje ciągle, a poza fałszywką zachowuje się jak zwykły telefon (przekazuje też prawdziwe pakiety) | założenie zespołu |
 
 Mieszkańcy są łączeni w gospodarstwa domowe (rozmiar 1 + Poisson, najwyżej 6) mieszkające w jednym
-punkcie. Budynek gospodarstwa losujemy proporcjonalnie do wagi budynku (bloki > domy).
+punkcie. Budynek gospodarstwa losujemy proporcjonalnie do wagi budynku (bloki > domy), spośród
+budynków zamieszkanych w scenariuszu (`settled_share`).
+
+**Gęste zaludnienie w scenariuszu demo.** Preset `flood-stronie` ustawia pełną liczbę mieszkańców
+i zwartą zabudowę, bo o zasięgu decyduje to, ilu ludzi mieszka blisko siebie: w budynku z wieloma
+mieszkańcami prawie zawsze ktoś ma aplikację i przekazuje alert sąsiadom, a telefony w zwartej zabudowie
+są w zasięgu radia. **Zasady radia, routingu, przekazu ustnego i adopcja są takie same** jak przy
+rozproszonej zabudowie; zmienia się tylko to, gdzie mieszkają ludzie. Ile wynik zależy od tego
+założenia, pokazuje WYNIKI.md (pkt 6, wariant „zabudowa rozproszona”).
 **Budynek jest w modelu punktem**: wszystkie jego gospodarstwa leżą w odległości kilku metrów od środka
 (rozrzut σ = 3 m, założenie zespołu). W bloku każdy ma więc wszystkich sąsiadów „w zasięgu 10 m”, co
 wzmacnia przekaz ustny (pkt 5) i ułatwia łączność między telefonami w tym samym budynku.
@@ -105,7 +115,7 @@ o ewakuacji tylko od domowników i sąsiadów (przekaz ustny, pkt 5).
 | Parametr | Wartość | Uzasadnienie | Źródło |
 |---|---|---|---|
 | `behavior.reaction_median_s` / `reaction_sigma` / `reaction_max_s` | mediana 5 min, rozkład log-normalny σ = 0,8, najwyżej 60 min | ludzie nie ruszają natychmiast: sprawdzają, pakują się, zbierają rodzinę | założenie zespołu (kształt rozkładu zgodny z literaturą o czasie mobilizacji przed ewakuacją) |
-| `behavior.p_comply` | 85% | część osób zostaje mimo alertu | założenie zespołu |
+| `behavior.p_comply` | domyślnie 85%; **w scenariuszu demo 92%** | część osób zostaje mimo alertu. Odsetek ewakuowanych nie może przekroczyć (1 − `p_need_help_zone`) × `p_comply` nawet wtedy, gdy o ewakuacji wiedzą wszyscy: 80% przy wartościach domyślnych, 86% w scenariuszu demo. Wartość 92% jest założeniem optymistycznym, dobranym dla scenariusza demo; wynik dla 85% jest w WYNIKI.md (pkt 6) | założenie zespołu |
 | `behavior.p_need_help_zone` | 6% | osoby objęte alertem, które nie mogą ewakuować się same (seniorzy, osoby leżące) | założenie zespołu |
 | `behavior.p_need_help_blackout` | 1% w ciągu pierwszych 2 h | potrzeby wynikające z samej awarii (prąd dla sprzętu medycznego, leki) | założenie zespołu |
 | `behavior.p_safe_report_evacuated` | 80% | odsetek ewakuowanych z aplikacją, którzy klikną „Jestem bezpieczny” | założenie zespołu |
