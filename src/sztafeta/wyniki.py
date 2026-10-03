@@ -304,11 +304,18 @@ def write_wyniki(
         if below:
             row = _one(summary, FULL, below[-1], ref_r, ref_c)
             if row is not None:
+                # wprost, która część kryterium zawodzi o stopień niżej: czas, zasięg czy obie
+                t50 = row["t50_app_s_med"]
+                slow = t50 is None or pd.isna(t50) or float(t50) > THRESHOLD_T50_S
+                low = float(row["alert_reach_zone_app_med"]) < THRESHOLD_ZONE_PCT
+                why = " i ".join(
+                    text for text, failed in (("za wolno", slow), ("za mały zasięg", low)) if failed
+                )
                 add(
-                    f"Przy adopcji {100 * below[-1]:.0f}% połowa telefonów ma alert dopiero po "
-                    f"{_time_cell(row, 't50_app_s', seeds)}, a zasięg "
+                    f"Przy adopcji {100 * below[-1]:.0f}% kryterium nie jest spełnione ({why}): "
+                    f"połowa telefonów ma alert po {_time_cell(row, 't50_app_s', seeds)}, a zasięg "
                     f"{'na koniec' if city else 'w strefie zagrożenia'} wynosi "
-                    f"{float(row['alert_reach_zone_app_med']):.0f}%."
+                    f"{float(row['alert_reach_zone_app_med']):.1f}%."
                 )
     add("")
     add(

@@ -149,7 +149,7 @@ def test_animation_without_zone_tells_the_story_of_the_whole_city(city_run: Path
     texts = [text for _, text in anim.story]
     assert "Kurierzy roznoszą alert po mieście" in texts
     assert "Miasto zaczyna się ewakuować" in texts
-    assert texts[-1].startswith("Ewakuowano") and texts[-1].endswith("mieszkańców miasta")
+    assert texts[-1].startswith("Ewakuowano") and texts[-1].endswith("mieszkańców")
     assert texts.index("Kurierzy roznoszą alert po mieście") < texts.index("Miasto zaczyna się ewakuować")
     anim.draw(Shot(900.0))
     drawn = [t.get_text() for t in anim.ax.texts] + [t.get_text() for t in anim.panel.texts]

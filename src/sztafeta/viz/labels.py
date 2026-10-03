@@ -154,7 +154,7 @@ _PL: dict[str, str] = {
     "ev_couriers_city": "Kurierzy roznoszą alert po mieście",
     "ev_evac_start_city": "Miasto zaczyna się ewakuować",
     "ev_evac_half_city": "Połowa miasta jest bezpieczna",
-    "ev_end_city": "Ewakuowano {pct:.0f}% mieszkańców miasta",
+    "ev_end_city": "Ewakuowano {pct:.0f}% mieszkańców",
     "evac_title_city": "Dzięki alertowi do punktu ewakuacji dociera {relay} mieszkańców miasta",
     "evac_sub_city": "Wszyscy mieszkańcy miasta, z aplikacją i bez (ci drudzy dowiadują się ustnie).",
     "evac_sub_vs_city": (
@@ -306,11 +306,11 @@ _EN: dict[str, str] = {
     "ev_evac_half": "Half of the zone is safe",
     "ev_end": "{pct:.0f}% of zone residents evacuated",
     "tile_evac_city": "Residents at the evacuation point",
-    "tile_evac_value_city": "{pct:.0f}% of the town's residents",
+    "tile_evac_value_city": "{pct:.0f}% of town residents",
     "ev_couriers_city": "Couriers carry the alert across town",
     "ev_evac_start_city": "The town starts evacuating",
     "ev_evac_half_city": "Half of the town is safe",
-    "ev_end_city": "{pct:.0f}% of the town's residents evacuated",
+    "ev_end_city": "{pct:.0f}% of residents evacuated",
     "evac_title_city": "Thanks to the alert {relay} of the town's residents reach the evacuation point",
     "evac_sub_city": "All town residents, with and without the app (the latter learn by word of mouth).",
     "evac_sub_vs_city": (
