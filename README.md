@@ -6,7 +6,7 @@ Symulacja w Pythonie · HackYeah 2026 · kategoria SMART CITY
 przekazuje informacje z telefonu do telefonu, gdy sieć komórkowa nie działa. To repozytorium zawiera
 **silnik symulacji**, który pokazuje i mierzy, jak taki system zachowałby się w prawdziwym mieście,
 oraz narzędzia do wykresów, animacji i przeglądu parametrów. Jest tu też prototyp ekranów aplikacji
-(katalog `prototyp/`).
+(katalog `prototyp/`), klikalny w przeglądarce.
 
 > **To jest model, nie pomiar.** Wszystkie liczby, wykresy i animacje pochodzą z symulacji komputerowej
 > przy założeniach opisanych w [docs/MODEL.md](docs/MODEL.md). Scenariusz jest inspirowany powodzią
@@ -57,37 +57,57 @@ repozytorium.
 Przeglądu parametrów (`uv run sztafeta batch`, 275 uruchomień, kilkanaście minut) nie trzeba
 powtarzać na demo: jego wynik to [docs/WYNIKI.md](docs/WYNIKI.md).
 
-### 2. Prototyp ekranów aplikacji (HTML)
-
-Ekrany aplikacji są w katalogu `prototyp/`. To statyczny prototyp wyglądu: 8 ekranów w dwóch
-wariantach, bez logiki i bez przechodzenia między ekranami, więc każdy ekran otwiera się osobno.
+### 2. Prototyp aplikacji (klikalny)
 
 ```bash
-# lokalny serwer z ekranami; Ctrl+C go zatrzymuje
+# lokalny serwer z prototypem; Ctrl+C go zatrzymuje
 uv run python -m http.server 8000 --directory prototyp
 ```
 
-Potem w przeglądarce trzeba otworzyć <http://localhost:8000/> i wybrać ekran z listy. Pojedynczy
-ekran otwiera się też bez serwera, na przykład `start prototyp\01_Home.html` (Windows).
+Potem w przeglądarce trzeba otworzyć <http://localhost:8000/>. Prototyp działa też bez serwera:
+`start prototyp\index.html` (Windows).
 
-| Ekran | Wariant samodzielny | Wariant w stylu mObywatela |
-|---|---|---|
-| strona główna | `01_Home.html` | `01_mObywatel_Home.html` |
-| lista rozmów | `02_Chat_List.html` | `02_mObywatel_Chat_List.html` |
-| rozmowa | `03_Chat_Details.html` | `03_mObywatel_Chat_Details.html` |
-| komunikat urzędowy | `04_Official_Notice.html` | `04_mObywatel_Official_Notice.html` |
-| zgłoszenie zdarzenia | `05_Report_Incident.html` | `05_mObywatel_Report_Incident.html` |
-| lista poradników | `06_Guides_List.html` | `06_mObywatel_Guides_List.html` |
-| poradnik | `07_Guide_Details.html` | `07_mObywatel_Guide_Details.html` |
-| lokalny asystent | `08_Local_Assistant.html` | `08_mObywatel_Local_Assistant.html` |
+Nad ramką telefonu jest przełącznik dwóch wariantów tej samej aplikacji:
 
-Ekrany mają szerokość telefonu (390 px), teksty po angielsku i czcionkę pobieraną z internetu; bez
-sieci przeglądarka użyje czcionki zastępczej. Prototyp nie jest połączony z symulacją.
+- **Netless (samodzielna)** – osiem ekranów połączonych nawigacją: strona główna, wiadomości, rozmowa
+  ze strażą, komunikat urzędowy, zgłoszenie zdarzenia, lista poradników, poradnik, lokalny asystent.
+- **Moduł w mObywatelu** – ekran „Dokumenty” z usługą „Bezpieczeństwo lokalne”, która otwiera te same
+  osiem ekranów w kolorach mObywatela, oraz wzór mDowodu oznaczony jako demo.
+
+Co da się kliknąć: kafelki i karty, dolny pasek, strzałka wstecz, filtr wiadomości, rodzaj zdarzenia
+w formularzu, zapis komunikatu i poradnika, wyszukiwarka poradników, wysłanie wiadomości w rozmowie
+i pytania do asystenta. Elementy bez własnego ekranu pokazują krótką informację, że nie są częścią
+prototypu. Wszystkie dane są fikcyjne i nic nie jest nigdzie wysyłane; prototyp nie jest połączony
+z symulacją.
+
+Każdy ekran ma własny adres, więc można otworzyć go od razu:
+
+| Ekran | Adres po `http://localhost:8000/` |
+|---|---|
+| strona główna | `#/netless/home` |
+| wiadomości | `#/netless/messages` |
+| rozmowa | `#/netless/chat` |
+| komunikat urzędowy | `#/netless/notice` |
+| zgłoszenie zdarzenia | `#/netless/report` |
+| poradniki | `#/netless/guides` |
+| poradnik | `#/netless/guide` |
+| lokalny asystent | `#/netless/assistant` |
+| mObywatel: dokumenty | `#/mobywatel/shell` |
+| mObywatel: wzór mDowodu (demo) | `#/mobywatel/mdowod` |
+
+Te same ekrany w kolorach mObywatela mają adres z `mobywatel` zamiast `netless`, na przykład
+`#/mobywatel/home`. Dopisek `?full` przed `#` (np. `?full#/netless/guide`) pokazuje ekran w pełnej
+wysokości, bez przewijania w ramce – przydatne do zrzutów na slajdy.
+
+Ikony są wpisane w pliki prototypu, więc wyświetlają się bez sieci. Czcionka Inter jest pobierana
+z internetu; bez sieci przeglądarka użyje czcionki systemowej. Teksty ekranów modułu są po angielsku,
+ekrany mObywatela po polsku. Wcześniejszy eksport ekranów z Figmy (pojedyncze pliki, bez ikon) został
+w `prototyp/eksport-figma/`.
 
 ## Nazwy
 
 W kodzie i dokumentach symulacji projekt występuje pod nazwą roboczą **Sztafeta** (pakiet i polecenie
-`sztafeta`). Na ekranach prototypu wariant samodzielny nosi nazwę roboczą „Blisko”.
+`sztafeta`). W eksporcie z Figmy wariant samodzielny nosi wcześniejszą nazwę roboczą „Blisko”.
 
 ## Spis treści
 
@@ -371,7 +391,8 @@ src/sztafeta/
   wyniki.py      generator docs/WYNIKI.md
   cli.py         polecenia wiersza poleceń
 tests/           testy pytest
-prototyp/        prototyp ekranów aplikacji: 16 plików HTML i opisy stylów użyte przy projektowaniu
+prototyp/        klikalny prototyp aplikacji (index.html, styles.css, app.js, icons.js)
+                 oraz wcześniejszy eksport ekranów z Figmy (eksport-figma/)
 data/            mapa Stronia Śląskiego (w repozytorium, żeby symulacja działała offline)
 docs/            koncepcja, założenia modelu, formaty, wyniki, źródła
 results/         wyniki uruchomień (poza repozytorium)
@@ -416,12 +437,13 @@ z proponowanymi endpointami i wszystkie schematy są w [docs/FORMAT.md](docs/FOR
 ```bash
 uv run ruff check . && uv run ruff format --check .   # lint i formatowanie
 uv run mypy src                                       # typy (tryb strict)
-uv run pytest                                         # 120 testów
+uv run pytest                                         # 124 testy
 ```
 
 Testy obejmują między innymi: powtarzalność wyników, weryfikację podpisów i łańcucha zaufania,
 odrzucanie fałszywych alertów, reguły kontaktu radiowego, routing i bufory, dostarczanie zgłoszeń
-i potwierdzeń, pliki wynikowe oraz rysowanie wykresów i animacji.
+i potwierdzeń, pliki wynikowe, rysowanie wykresów i animacji oraz prototyp aplikacji (komplet ikon,
+przejścia między ekranami; test dymny wymaga Node.js i bez niego jest pomijany).
 
 ## Ograniczenia modelu
 

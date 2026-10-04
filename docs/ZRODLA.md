@@ -15,6 +15,8 @@
 | osmnx | MIT | pobranie sieci ulic i budynków z OpenStreetMap (tylko `sztafeta fetch-osm`) |
 | networkx, geopandas, shapely, pyproj | BSD-3-Clause / BSD-3-Clause / BSD-3-Clause / MIT | zależności osmnx: graf, geometrie, rzutowanie do EPSG:2180 |
 | pytest, ruff, mypy, types-PyYAML | MIT / MIT / MIT / Apache-2.0 | testy, lint, kontrola typów (tylko deweloperskie) |
+| Lucide (zestaw ikon) | ISC | kontury ikon prototypu aplikacji, wpisane w `prototyp/icons.js` |
+| Inter (czcionka) | SIL Open Font License 1.1 | czcionka prototypu aplikacji, pobierana z Google Fonts |
 
 ## Dane
 | Zbiór | Licencja | Do czego |
@@ -31,6 +33,8 @@
 
 ## Użycie AI
 Projekt był rozwijany z pomocą Claude (claude.ai: research i koncepcja; Claude Code: implementacja symulacji).
+Klikalny prototyp aplikacji (`prototyp/`) został zaimplementowany z pomocą Claude Code na podstawie makiet
+zespołu; w `prototyp/eksport-figma/` są opisy stylów przygotowane jako prompty dla Figma AI i Claude.
 Zespół rozumie i potrafi obronić każdą część rozwiązania.
 
 ## Praca sprzed hackathonu
