@@ -3,21 +3,99 @@
 Symulacja w Pythonie · HackYeah 2026 · kategoria SMART CITY
 
 **Netless** to koncepcja modułu do aplikacji mObywatel, który w czasie kryzysu (powódź, blackout)
-przekazuje informacje z telefonu do telefonu, gdy sieć komórkowa nie działa. To repozytorium nie
-zawiera aplikacji mobilnej. Zawiera **silnik symulacji**, który pokazuje i mierzy, jak taki system
-zachowałby się w prawdziwym mieście, oraz narzędzia do wykresów, animacji i przeglądu parametrów.
-
-W kodzie i dokumentach projekt występuje pod nazwą roboczą **Sztafeta** (pakiet i polecenie `sztafeta`).
+przekazuje informacje z telefonu do telefonu, gdy sieć komórkowa nie działa. To repozytorium zawiera
+**silnik symulacji**, który pokazuje i mierzy, jak taki system zachowałby się w prawdziwym mieście,
+oraz narzędzia do wykresów, animacji i przeglądu parametrów. Prototyp ekranów aplikacji jest na
+osobnej gałęzi `figma-styles`.
 
 > **To jest model, nie pomiar.** Wszystkie liczby, wykresy i animacje pochodzą z symulacji komputerowej
 > przy założeniach opisanych w [docs/MODEL.md](docs/MODEL.md). Scenariusz jest inspirowany powodzią
 > w Stroniu Śląskim z września 2024 r., ale nie jest jej rekonstrukcją. Projekt nie jest oficjalnym
 > produktem mObywatela i nie używa jego znaków.
 
+## Demo krok po kroku
+
+Wszystkie polecenia uruchamia się w głównym katalogu repozytorium. Potrzebne są: Python 3.11 lub
+nowszy, [uv](https://docs.astral.sh/uv/) i git.
+
+### 1. Symulacja
+
+```bash
+# instalacja zależności (raz)
+uv sync
+
+# symulacja scenariusza demo: powódź w Stroniu Śląskim, 6 godzin bez sieci (ok. 50 s obliczeń)
+uv run sztafeta run --preset flood-stronie --seed 42
+
+# ten sam scenariusz bez przekazywania między telefonami, jako punkt odniesienia (kilka sekund)
+uv run sztafeta run --preset flood-stronie --seed 42 --baseline
+
+# wykresy i karta wyników do slajdów (kilka sekund)
+uv run sztafeta charts results/flood-stronie_s42
+
+# animacja mapy: awaria sieci, kurierzy, telefony przekazujące sobie alert, ewakuacja (ok. 1,5 min)
+uv run sztafeta animate results/flood-stronie_s42
+
+# ekran telefonu jednego mieszkańca: alert prawdziwy, alert fałszywy, własne zgłoszenie (JSON)
+uv run sztafeta inspect results/flood-stronie_s42 --agent 1256 --t 14400
+```
+
+Gdzie szukać wyników:
+
+| Co | Gdzie |
+|---|---|
+| animacja do pokazania | `results/flood-stronie_s42/animacja_pl.mp4` |
+| wykresy i karta wyników | `results/flood-stronie_s42/wykresy/` (cztery pliki PNG) |
+| najważniejsze liczby uruchomienia | `results/flood-stronie_s42/summary.json` |
+| liczby do slajdów z przeglądu parametrów | [docs/WYNIKI.md](docs/WYNIKI.md), już w repozytorium |
+| kod symulacji | `src/sztafeta/` |
+
+Plik otwiera się z terminala poleceniem `start results\flood-stronie_s42\animacja_pl.mp4` (Windows),
+`open` (macOS) albo `xdg-open` (Linux). Katalog `results/` powstaje lokalnie i nie jest częścią
+repozytorium.
+
+Przeglądu parametrów (`uv run sztafeta batch`, 275 uruchomień, kilkanaście minut) nie trzeba
+powtarzać na demo: jego wynik to [docs/WYNIKI.md](docs/WYNIKI.md).
+
+### 2. Prototyp ekranów aplikacji (HTML)
+
+Ekrany aplikacji są na gałęzi `figma-styles`. To statyczny prototyp wyglądu: 8 ekranów w dwóch
+wariantach, bez logiki i bez przechodzenia między ekranami, więc każdy ekran otwiera się osobno.
+
+```bash
+# pobranie gałęzi z ekranami do katalogu obok repozytorium (raz)
+git fetch origin
+git worktree add --detach ../netless-ui origin/figma-styles
+
+# lokalny serwer z ekranami; Ctrl+C go zatrzymuje
+uv run python -m http.server 8000 --directory ../netless-ui
+```
+
+Potem w przeglądarce trzeba otworzyć <http://localhost:8000/> i wybrać ekran z listy:
+
+| Ekran | Wariant samodzielny | Wariant w stylu mObywatela |
+|---|---|---|
+| strona główna | `01_Home.html` | `01_mObywatel_Home.html` |
+| lista rozmów | `02_Chat_List.html` | `02_mObywatel_Chat_List.html` |
+| rozmowa | `03_Chat_Details.html` | `03_mObywatel_Chat_Details.html` |
+| komunikat urzędowy | `04_Official_Notice.html` | `04_mObywatel_Official_Notice.html` |
+| zgłoszenie zdarzenia | `05_Report_Incident.html` | `05_mObywatel_Report_Incident.html` |
+| lista poradników | `06_Guides_List.html` | `06_mObywatel_Guides_List.html` |
+| poradnik | `07_Guide_Details.html` | `07_mObywatel_Guide_Details.html` |
+| lokalny asystent | `08_Local_Assistant.html` | `08_mObywatel_Local_Assistant.html` |
+
+Ekrany mają szerokość telefonu (390 px), teksty po angielsku i czcionkę pobieraną z internetu; bez
+sieci przeglądarka użyje czcionki zastępczej. Prototyp nie jest połączony z symulacją.
+
+## Nazwy
+
+W kodzie i dokumentach symulacji projekt występuje pod nazwą roboczą **Sztafeta** (pakiet i polecenie
+`sztafeta`). Na ekranach prototypu wariant samodzielny nosi nazwę roboczą „Blisko”.
+
 ## Spis treści
 
+- [Demo krok po kroku](#demo-krok-po-kroku)
 - [Co pokazuje symulacja](#co-pokazuje-symulacja)
-- [Szybki start](#szybki-start)
 - [Jak to działa](#jak-to-działa)
 - [Scenariusz demo](#scenariusz-demo)
 - [Polecenia](#polecenia)
@@ -42,20 +120,6 @@ Dwa moduły działające na wspólnym silniku P2P:
 Symulacja odpowiada na pytania, których nie da się sprawdzić na kilku telefonach w sali: jak szybko
 alert dociera do mieszkańców, ile zgłoszeń trafia do sztabu, od jakiego odsetka instalacji system
 zaczyna działać i jak bardzo wynik zależy od zasięgu radia.
-
-## Szybki start
-
-Wymagania: Python 3.11 lub nowszy i [uv](https://docs.astral.sh/uv/).
-
-```bash
-uv sync                                                  # instalacja zależności
-uv run sztafeta run --preset flood-stronie --seed 42     # symulacja -> results/flood-stronie_s42/
-uv run sztafeta charts results/flood-stronie_s42         # wykresy i karta wyników (PNG 16:9)
-uv run sztafeta animate results/flood-stronie_s42        # animacja mapy (MP4 1920x1080)
-```
-
-Mapa Stronia Śląskiego jest w repozytorium (`data/stronie-slaskie/`), więc wszystko działa bez sieci.
-Scenariusz demo (ok. 5000 agentów, 6 godzin, krok 1 s) liczy się w mniej więcej 50 sekund.
 
 ## Jak to działa
 
@@ -172,7 +236,7 @@ Osób bez aplikacji, zgłoszeń do PCZK i fałszywego alertu na niej nie ma; są
 | `uv run sztafeta charts results/<run_id>` | trzy wykresy i karta wyników; wariant bazowy jest dołączany, jeśli istnieje |
 | `uv run sztafeta animate results/<run_id>` | animacja mapy (MP4, a bez ffmpeg GIF) |
 | `uv run sztafeta frame results/<run_id> --t 5400` | jedna klatka animacji jako PNG; `--closeup` daje kadr zbliżenia |
-| `uv run sztafeta inspect results/<run_id> --agent 120 --t 3600` | stan telefonu wybranego agenta w danej chwili (JSON) |
+| `uv run sztafeta inspect results/<run_id> --agent 1256 --t 14400` | stan telefonu wybranego agenta w danej chwili (JSON) |
 | `uv run sztafeta batch` | przegląd parametrów: adopcja × zasięg × kurierzy × seedy; generuje `docs/WYNIKI.md` |
 | `uv run sztafeta fetch-osm --preset flood-stronie` | ponowne pobranie mapy z OpenStreetMap (wymaga sieci) |
 
