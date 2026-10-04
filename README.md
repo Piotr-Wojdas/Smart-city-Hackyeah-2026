@@ -336,12 +336,12 @@ from sztafeta.scenarios import load_preset
 params, scenario = load_preset("flood-stronie", overrides=["behavior.adoption=0.5"])
 sim = Simulation(params, scenario, seed=42)
 
-static = sim.describe()        # mapa i agenci, wysyłane raz
-sim.run(until=3600)            # albo sim.step() w pętli serwera
-frame = sim.snapshot()         # stan w bieżącej chwili, serializowalny do JSON
-events = sim.drain_events()    # zdarzenia od poprzedniego wywołania
-phone = sim.phone_view(120)    # ekran telefonu wybranego agenta
-board = sim.pczk_dashboard()   # dashboard sztabu
+static = sim.describe()  # mapa i agenci, wysyłane raz
+sim.run(until=3600)  # albo sim.step() w pętli serwera
+frame = sim.snapshot()  # stan w bieżącej chwili, serializowalny do JSON
+events = sim.drain_events()  # zdarzenia od poprzedniego wywołania
+phone = sim.phone_view(120)  # ekran telefonu wybranego agenta
+board = sim.pczk_dashboard()  # dashboard sztabu
 ```
 
 Akcje scenariusza to metody tej samej klasy: `network_down`, `issue_alert`, `cancel_alert`,
