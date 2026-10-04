@@ -1,0 +1,27 @@
+# Scenariusz powodziowy na proceduralnej siatce miejskiej (bez danych OSM).
+# Mapa nie odwzorowuje żadnego rzeczywistego miasta – służy do testów i jako fallback.
+name: flood-grid
+description: Powódź w modelowym mieście na siatce proceduralnej
+
+map:
+  kind: grid
+  grid:
+    seed: 7
+    nx: 22
+    ny: 16
+    spacing: 90.0
+
+scenario:
+  start: "2024-09-15T06:00:00+02:00"
+  hub_name: "Urząd / PCZK"
+  evac_name: "Szkoła – punkt ewakuacji"
+  incident: "POWODZ-2024-09-15"
+  timeline:
+    - {t_min: 0, kind: network_down, label: "Awaria sieci komórkowej"}
+    - {t_min: 10, kind: issue_alert, hazard: FLOOD, action: EVACUATE, msg_type: ALERT}
+    - {t_min: 20, kind: dispatch_couriers}
+    - {t_min: 30, kind: troll_broadcast, forgery: BAD_SIGNATURE}
+    - {t_min: 180, kind: issue_alert, hazard: DAM_FAILURE, action: EVACUATE, msg_type: UPDATE}
+
+params:
+  duration_s: 21600

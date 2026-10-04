@@ -1,0 +1,33 @@
+# Mały, szybki scenariusz do testów automatycznych (kilkuset agentów, 1 h).
+name: test-small
+description: Mała siatka do testów
+
+map:
+  kind: grid
+  grid:
+    seed: 3
+    nx: 9
+    ny: 7
+    spacing: 80.0
+    zone_halfwidth: 90.0
+
+scenario:
+  start: "2024-09-15T06:00:00+02:00"
+  incident: "TEST-1"
+  timeline:
+    - {t_min: 0, kind: network_down, label: "Awaria sieci komórkowej"}
+    - {t_min: 2, kind: issue_alert, hazard: FLOOD, action: EVACUATE, msg_type: ALERT}
+    - {t_min: 4, kind: dispatch_couriers}
+    - {t_min: 6, kind: troll_broadcast, forgery: BAD_SIGNATURE}
+    - {t_min: 40, kind: issue_alert, hazard: DAM_FAILURE, action: EVACUATE, msg_type: UPDATE}
+
+params:
+  duration_s: 3600
+  population:
+    n_residents: 400
+    n_couriers: 2
+    n_trolls: 1
+    courier_return_interval_s: 600
+  behavior:
+    adoption: 0.5
+    walk_rate_per_h: 0.5

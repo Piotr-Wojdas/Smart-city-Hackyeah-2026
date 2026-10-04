@@ -1,0 +1,24 @@
+{
+  "name": "Stronie Śląskie",
+  "crs": "EPSG:2180",
+  "source": "OpenStreetMap, Stronie Śląskie (© autorzy OpenStreetMap (ODbL))",
+  "attribution": "© autorzy OpenStreetMap (ODbL)",
+  "license": "ODbL 1.0",
+  "fetched": "2026-10-03",
+  "center_lat_lon": [
+    50.2957,
+    16.8742
+  ],
+  "dist_m": 1800.0,
+  "network": "walk",
+  "zone_buffer_m": 120.0,
+  "nodes": 4729,
+  "edges": 5115,
+  "street_km": 99.0,
+  "residential_buildings": 1025,
+  "buildings_in_zone": 258,
+  "weight_share_in_zone": 0.259,
+  "hub_note": "położenie urzędu z OSM",
+  "evac_note": "szkoła z OSM położona poza strefą zagrożenia",
+  "disclaimer": "Strefa zagrożenia to bufor wokół rzek, a nie mapa zalewowa. Położenie huba i punktu ewakuacji jest umowne: scenariusz jest inspirowany powodzią z 2024 r., nie jest jej rekonstrukcją."
+}
