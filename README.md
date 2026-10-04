@@ -5,8 +5,8 @@ Symulacja w Pythonie · HackYeah 2026 · kategoria SMART CITY
 **Netless** to koncepcja modułu do aplikacji mObywatel, który w czasie kryzysu (powódź, blackout)
 przekazuje informacje z telefonu do telefonu, gdy sieć komórkowa nie działa. To repozytorium zawiera
 **silnik symulacji**, który pokazuje i mierzy, jak taki system zachowałby się w prawdziwym mieście,
-oraz narzędzia do wykresów, animacji i przeglądu parametrów. Prototyp ekranów aplikacji jest na
-osobnej gałęzi `figma-styles`.
+oraz narzędzia do wykresów, animacji i przeglądu parametrów. Jest tu też prototyp ekranów aplikacji
+(katalog `prototyp/`).
 
 > **To jest model, nie pomiar.** Wszystkie liczby, wykresy i animacje pochodzą z symulacji komputerowej
 > przy założeniach opisanych w [docs/MODEL.md](docs/MODEL.md). Scenariusz jest inspirowany powodzią
@@ -59,19 +59,16 @@ powtarzać na demo: jego wynik to [docs/WYNIKI.md](docs/WYNIKI.md).
 
 ### 2. Prototyp ekranów aplikacji (HTML)
 
-Ekrany aplikacji są na gałęzi `figma-styles`. To statyczny prototyp wyglądu: 8 ekranów w dwóch
+Ekrany aplikacji są w katalogu `prototyp/`. To statyczny prototyp wyglądu: 8 ekranów w dwóch
 wariantach, bez logiki i bez przechodzenia między ekranami, więc każdy ekran otwiera się osobno.
 
 ```bash
-# pobranie gałęzi z ekranami do katalogu obok repozytorium (raz)
-git fetch origin
-git worktree add --detach ../netless-ui origin/figma-styles
-
 # lokalny serwer z ekranami; Ctrl+C go zatrzymuje
-uv run python -m http.server 8000 --directory ../netless-ui
+uv run python -m http.server 8000 --directory prototyp
 ```
 
-Potem w przeglądarce trzeba otworzyć <http://localhost:8000/> i wybrać ekran z listy:
+Potem w przeglądarce trzeba otworzyć <http://localhost:8000/> i wybrać ekran z listy. Pojedynczy
+ekran otwiera się też bez serwera, na przykład `start prototyp\01_Home.html` (Windows).
 
 | Ekran | Wariant samodzielny | Wariant w stylu mObywatela |
 |---|---|---|
@@ -374,6 +371,7 @@ src/sztafeta/
   wyniki.py      generator docs/WYNIKI.md
   cli.py         polecenia wiersza poleceń
 tests/           testy pytest
+prototyp/        prototyp ekranów aplikacji: 16 plików HTML i opisy stylów użyte przy projektowaniu
 data/            mapa Stronia Śląskiego (w repozytorium, żeby symulacja działała offline)
 docs/            koncepcja, założenia modelu, formaty, wyniki, źródła
 results/         wyniki uruchomień (poza repozytorium)
