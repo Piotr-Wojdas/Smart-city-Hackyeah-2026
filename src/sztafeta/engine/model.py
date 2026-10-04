@@ -12,7 +12,7 @@ from enum import IntEnum, StrEnum
 import numpy as np
 from numpy.typing import NDArray
 
-from sztafeta.engine.geo import GeoRef
+from sztafeta.engine.geo import GeoRef, points_in_polygon
 from sztafeta.engine.graph import StreetGraph
 
 FloatArr = NDArray[np.float64]
@@ -426,6 +426,10 @@ class BehaviorParams:
 @dataclass(slots=True)
 class PopulationParams:
     n_residents: int = 3000
+    # zwarta zabudowa: ludzie mieszkają tylko w tej części budynków, wokół której zabudowa jest
+    # najgęstsza (1.0 = we wszystkich budynkach)
+    settled_share: float = 1.0
+    settled_radius_m: float = 150.0  # promień, w którym liczona jest gęstość zabudowy wokół budynku
     n_couriers: int = 5
     n_trolls: int = 1
     courier_vehicle_share: float = 0.5
@@ -471,10 +475,21 @@ class CityMap:
     building_weight: FloatArr  # (B,) względna liczba mieszkańców
     hub_xy: FloatArr  # (2,)
     evac_xy: FloatArr  # (2,)
-    hazard_zone: FloatArr  # (K, 2) wielokąt
+    hazard_zone: FloatArr  # (K, 2) wielokąt; pusty (0, 2) = bez wydzielonej strefy, alert dla całego miasta
     georef: GeoRef
     water: list[FloatArr] = field(default_factory=list)  # linie rzek (tylko do rysowania)
     source: str = "proceduralna siatka"
+
+    @property
+    def has_zone(self) -> bool:
+        """Czy jest wydzielona strefa zagrożenia (bez niej alert i ewakuacja dotyczą całego miasta)."""
+        return bool(self.hazard_zone.shape[0] >= 3)
+
+    def in_area(self, points: FloatArr) -> BoolArr:
+        """Które punkty leżą w obszarze objętym alertem: w strefie zagrożenia, a bez strefy – wszystkie."""
+        if not self.has_zone:
+            return np.ones(points.shape[0], dtype=np.bool_)
+        return points_in_polygon(points, self.hazard_zone)
 
 
 @dataclass(slots=True)
@@ -518,7 +533,7 @@ class AgentArrays:
     home_xy: FloatArr  # (N, 2)
     household: IntArr
     report_persons: NDArray[np.uint8]  # ile osób obejmie zgłoszenie tego agenta
-    in_zone: BoolArr  # dom w strefie zagrożenia
+    in_zone: BoolArr  # dom w obszarze objętym alertem (strefa zagrożenia albo całe miasto)
     is_vehicle: BoolArr
     state: NDArray[np.uint8]
     battery: FloatArr  # 0..100

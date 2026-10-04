@@ -23,7 +23,7 @@ from matplotlib.ticker import FuncFormatter, MultipleLocator
 
 from sztafeta.io.reader import load_light
 from sztafeta.viz import style
-from sztafeta.viz.labels import elapsed, tr
+from sztafeta.viz.labels import area_key, elapsed, tr, whole_city
 
 _FIGSIZE = (12.8, 7.2)
 _DPI = 200
@@ -322,12 +322,12 @@ def plot_reach(run: Light, base: Light | None, out: Path, lang: str = "pl") -> P
 
 
 def plot_evacuation(run: Light, base: Light | None, out: Path, lang: str = "pl") -> Path:
-    """Odsetek mieszkańców strefy zagrożenia, którzy dotarli do punktu ewakuacji."""
-    title = tr(lang, "evac_title", relay=_pct(float(run.summary["evacuated_zone"])))
-    subtitle = tr(lang, "evac_sub_vs" if base is not None else "evac_sub")
-    return _percent_chart(
-        run, base, "evacuated_zone", lang, title, subtitle, tr(lang, "evac_axis"), out, False
-    )
+    """Odsetek mieszkańców objętych alertem (strefy albo miasta), którzy dotarli do punktu ewakuacji."""
+    city = whole_city(run.summary)
+    title = tr(lang, area_key("evac_title", city), relay=_pct(float(run.summary["evacuated_zone"])))
+    subtitle = tr(lang, area_key("evac_sub_vs" if base is not None else "evac_sub", city))
+    axis = tr(lang, area_key("evac_axis", city))
+    return _percent_chart(run, base, "evacuated_zone", lang, title, subtitle, axis, out, False)
 
 
 def plot_reports(run: Light, base: Light | None, out: Path, lang: str = "pl") -> Path:
@@ -437,13 +437,16 @@ def plot_scorecard(run: Light, base: Light | None, out: Path, lang: str = "pl") 
         value = s.get(key)
         return tr(lang, "card_never") if value is None else elapsed(lang, float(value))
 
+    city = whole_city(s)
+    # bez strefy zagrożenia zasięg „w strefie” byłby powtórzeniem zasięgu ogólnego
+    zone_note = "" if city else tr(lang, "card_zone_note", zone=_pct(float(s["alert_reach_zone_app"])))
     alerts = [
         (
             _pct(float(s["alert_reach_app"])),
             tr(lang, "card_reach"),
             [
                 tr(lang, "card_reach_note", t50=when("t50_app_s")),
-                tr(lang, "card_zone_note", zone=_pct(float(s["alert_reach_zone_app"]))),
+                zone_note,
                 versus(_pct(float(b["alert_reach_app"]))) if b is not None else "",
             ],
         ),
@@ -454,7 +457,7 @@ def plot_scorecard(run: Light, base: Light | None, out: Path, lang: str = "pl") 
         ),
         (
             _pct(float(s["evacuated_zone"])),
-            tr(lang, "card_evac"),
+            tr(lang, area_key("card_evac", city)),
             [versus(_pct(float(b["evacuated_zone"]))) if b is not None else "", tr(lang, "card_evac_note")],
         ),
         (

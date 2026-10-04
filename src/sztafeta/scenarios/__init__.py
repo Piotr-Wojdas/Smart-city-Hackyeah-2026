@@ -7,6 +7,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import yaml
 
 from sztafeta.data.grid import make_grid_city
@@ -24,6 +25,9 @@ from sztafeta.engine.model import (
 
 PRESET_DIR = Path(__file__).parent / "presets"
 DEFAULT_DATA_DIR = Path("data")
+# `scenario.area` w presecie: kogo dotyczy alert
+AREA_ZONE = "zone"  # mieszkańców strefy zagrożenia z mapy (domyślnie)
+AREA_CITY = "city"  # wszystkich mieszkańców; strefa z mapy jest pomijana
 
 
 def list_presets() -> list[str]:
@@ -55,6 +59,12 @@ def load_preset(
     apply_overrides(params, overrides)
     city = build_city(raw.get("map", {"kind": "grid"}), data_dir or DEFAULT_DATA_DIR)
     sc = raw.get("scenario", {})
+    area = str(sc.get("area", AREA_ZONE))
+    if area == AREA_CITY:
+        # bez wydzielonej strefy: alert, ewakuacja i patrole kurierów obejmują całe miasto
+        city.hazard_zone = np.empty((0, 2), dtype=np.float64)
+    elif area != AREA_ZONE:
+        raise ValueError(f"Nieznany obszar alertu: {area} (dozwolone: {AREA_ZONE}, {AREA_CITY})")
     scenario = Scenario(
         name=str(raw.get("name", Path(name).stem)),
         city=city,

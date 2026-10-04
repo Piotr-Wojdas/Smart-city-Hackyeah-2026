@@ -164,10 +164,10 @@ def test_storyboard_runs_smoothly_and_inserts_closeup() -> None:
     assert len(city) == len(set(city))
     before = [t for t in city if t < 1500.0]
     assert {round(b - a, 6) for a, b in itertools.pairwise(before)} == {12.0}
-    # zbliżenie: najazd, zwolnione tempo (0,5 s na klatkę), odjazd
+    # zbliżenie: najazd, zwolnione tempo (0,25 s na klatkę), odjazd
     zoomed = [s for s in shots if s.zoom == 1.0]
-    assert zoomed[0].t == 1500.0 and zoomed[-1].t == 1600.0 and len(zoomed) == 201
-    assert {round(b.t - a.t, 3) for a, b in itertools.pairwise(zoomed)} == {0.5}
+    assert zoomed[0].t == 1500.0 and zoomed[-1].t == 1600.0 and len(zoomed) == 401
+    assert {round(b.t - a.t, 3) for a, b in itertools.pairwise(zoomed)} == {0.25}
     ramp_in = [s.zoom for s in shots if s.t == 1500.0 and 0.0 < s.zoom < 1.0]
     ramp_out = [s.zoom for s in shots if s.t == 1600.0 and 0.0 < s.zoom < 1.0]
     assert ramp_in == sorted(ramp_in) and ramp_out == sorted(ramp_out, reverse=True) and len(ramp_in) == 9
@@ -178,6 +178,24 @@ def test_storyboard_runs_smoothly_and_inserts_closeup() -> None:
     part = storyboard(1200.0, close, 10, 30.0, t_from=600.0)
     assert [s.t for s in part] == [600.0 + 30.0 * k for k in range(21)]  # zbliżenie poza zakresem
     assert storyboard(100.0, None, 10, 12.0, t_from=500.0) == []
+
+
+def test_closeup_slows_down_for_handovers_and_hurries_through_gaps() -> None:
+    from sztafeta.viz.animate import Closeup, close_times, storyboard
+
+    # dwa przekazania: 1500-1510 i 1551-1600; między nimi 41 s bez żadnego zdarzenia
+    close = Closeup(0.0, 0.0, 75.0, 1500.0, 1600.0, (0, 1, 2), focus=((1500.0, 1510.0), (1551.0, 1600.0)))
+    times = close_times(close)
+    assert times[0] == 1500.0 and times[-1] == 1600.0
+    steps = [round(b - a, 6) for a, b in itertools.pairwise(times)]
+    assert min(steps) > 0.0  # czas nigdy nie stoi ani się nie cofa
+    slow = [d for when, d in zip(times, steps, strict=False) if when < 1510.0 or when >= 1551.0]
+    gap = [d for when, d in zip(times, steps, strict=False) if 1510.0 <= when < 1551.0]
+    assert set(slow) == {0.25}  # przekazania w zwolnionym tempie
+    assert max(gap) == 2.0 and len(gap) == 21  # przerwa przewinięta osiem razy szybciej
+    assert 1551.0 in times  # początek następnego przekazania nie jest przeskakiwany
+    shots = [s for s in storyboard(7200.0, close, fps=10, step_s=12.0) if s.zoom == 1.0]
+    assert [s.t for s in shots] == times
 
 
 def test_closeup_shows_a_chain_of_three_phone_to_phone_handovers() -> None:
@@ -198,6 +216,19 @@ def test_closeup_shows_a_chain_of_three_phone_to_phone_handovers() -> None:
     visible[1] = False
     assert pick_chain(t, agent, peer, visible) is None  # nie ma już żadnego łańcucha trzech przekazań
 
+    # łańcuch może zaczynać się tylko od wskazanych przekazań (pierwszy telefon ma już alert)
+    visible[:] = True
+    first = np.zeros(t.size, dtype=bool)
+    first[0] = True
+    assert pick_chain(t, agent, peer, visible, first=first) == (0, 1, 2)
+    # cztery telefony łańcucha muszą leżeć w czterech różnych miejscach: w późniejszym łańcuchu telefon 6
+    # stoi tuż obok telefonu 4, więc linia do niego wyglądałaby jak linia do telefonu, który ma już alert
+    spot = {0: (0.0, 0.0), 1: (30.0, 0.0), 2: (60.0, 0.0), 3: (90.0, 0.0), 4: (120.0, 0.0), 5: (150.0, 0.0)}
+    spot.update({6: (121.0, 1.0), 8: (500.0, 0.0), 9: (530.0, 0.0)})
+    seg = np.array([[spot[int(a)], spot[int(b)]] for a, b in zip(peer, agent, strict=True)])
+    assert pick_chain(t, agent, peer, visible, seg=seg, min_gap=12.0) == (0, 1, 2)
+    assert pick_chain(t, agent, peer, visible, seg=seg, min_gap=0.5) == (3, 4, 5)
+
 
 def test_closeup_of_real_run_draws_exactly_three_handovers(run_dir: Path) -> None:
     from sztafeta.io.reader import load_run
@@ -216,3 +247,57 @@ def test_closeup_of_real_run_draws_exactly_three_handovers(run_dir: Path) -> Non
     assert (seg[..., 0] > x0).all() and (seg[..., 0] < x1).all()
     assert (seg[..., 1] > y0).all() and (seg[..., 1] < y1).all()
     assert (np.hypot(*(seg[:, 1] - seg[:, 0]).T) <= 40.0 + 1e-6).all()
+
+
+def test_closeup_line_only_runs_from_a_phone_with_the_alert_to_one_without(run_dir: Path) -> None:
+    from sztafeta.io.reader import load_run
+    from sztafeta.viz.animate import _EVENTS, _PACKET_TRAVEL_S, MapAnimation, Shot
+
+    anim = MapAnimation(load_run(run_dir, _EVENTS), dpi=40)
+    close = anim.closeup
+    assert close is not None
+    chain = list(close.ids)
+    senders, receivers = anim._got_peer[chain], anim._got_agent[chain]
+    assert int(anim._focus.sum()) == 4 and anim._focus[senders].all() and anim._focus[receivers].all()
+    assert close.t0 == close.focus[0][0] and close.t1 == close.focus[-1][1]
+
+    def at(agent: int, when: float) -> np.ndarray:
+        return anim._positions_at(np.array([when]), np.array([agent]))[0]
+
+    def joins(seg: np.ndarray, a: np.ndarray, b: np.ndarray) -> bool:
+        return bool(np.allclose(seg[0], a, atol=1e-3) and np.allclose(seg[1], b, atol=1e-3))
+
+    def drawn(when: float) -> tuple[list[np.ndarray], list[np.ndarray]]:
+        anim.draw(Shot(when, 1.0))
+        return list(anim._contact_lines.get_segments()), list(anim._hand_lines.get_segments())
+
+    for k, sender, receiver in zip(chain, senders.tolist(), receivers.tolist(), strict=True):
+        got = float(anim._got_t[k])
+        assert any(a <= float(anim._link_from[k]) < got <= b for a, b in close.focus)  # w zwolnionym tempie
+        # połączenie w toku: nadawca ma alert, odbiorca jeszcze nie, łączy ich przerywana linia
+        when = got - 0.5
+        assert anim._alert_at[sender] <= when < anim._alert_at[receiver]
+        dashed, blue = drawn(when)
+        a, b = at(sender, when), at(receiver, when)
+        assert sum(joins(seg, a, b) for seg in dashed) == 1
+        # alert w drodze: niebieski odcinek zaczyna się u nadawcy i jeszcze nie sięga odbiorcy
+        head = a + (b - a) * (1.0 - 0.5 / _PACKET_TRAVEL_S)
+        assert sum(joins(seg, a, head) for seg in blue) == 1
+        assert any(np.allclose(dot, head, atol=1e-3) for dot in anim._packet_sc.get_offsets())
+        # tuż po odbiorze tej pary nie łączy już żadna linia; u odbiorcy zostaje pierścień
+        when = got + 0.25
+        dashed, blue = drawn(when)
+        a, b = at(sender, when), at(receiver, when)
+        assert not any(joins(seg, a, b) for seg in dashed)
+        assert not any(np.allclose(seg[0], a, atol=1e-3) for seg in blue)
+        assert any(np.allclose(dot, b, atol=1e-3) for dot in anim._ring_sc.get_offsets())
+
+    # koniec zbliżenia: wszyscy czterej mają alert i nic ich nie łączy
+    dashed, blue = drawn(close.t1)
+    assert dashed == [] and blue == []
+    assert len(anim._focus_idle_sc.get_offsets()) == 0
+    # reszta kadru jest w zbliżeniu przygaszona, a w widoku miasta nie
+    assert anim._idle_sc.get_alpha() < 0.5
+    anim.draw(Shot(close.t1, 0.0))
+    assert anim._idle_sc.get_alpha() == 1.0
+    assert len(anim._contact_lines.get_segments()) == 0

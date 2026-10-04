@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
+
 _PL: dict[str, str] = {
-    "title": "Sztafeta",
+    "title": "Netless",
     "subtitle": "kanał kryzysowy telefon–telefon bez sieci komórkowej",
     "model_note": "Wynik modelu (symulacja komputerowa), nie pomiar z terenu.",
     "model_tag": "wynik modelu",
@@ -141,17 +143,32 @@ _PL: dict[str, str] = {
     "leg_ring": "właśnie odebrał alert",
     "leg_evac": "ewakuuje się",
     "leg_courier": "kurier (ratownik)",
-    "closeup_caption": "ZBLIŻENIE · przerywana linia: telefony się łączą · niebieska: alert przekazany",
+    "closeup_caption": "ZBLIŻENIE · przerywana linia: telefony się łączą · niebieska: alert jest przesyłany",
     "scale_range": "{m} m: zasięg radia",
     "ev_evac_start": "Strefa zaczyna się ewakuować",
     "ev_evac_half": "Połowa strefy jest bezpieczna",
     "ev_end": "Ewakuowano {pct:.0f}% mieszkańców strefy",
+    # warianty „_city”: scenariusz bez strefy zagrożenia, alert i ewakuacja dotyczą całego miasta
+    "tile_evac_city": "Mieszkańcy w punkcie ewakuacji",
+    "tile_evac_value_city": "{pct:.0f}% mieszkańców miasta",
+    "ev_couriers_city": "Kurierzy roznoszą alert po mieście",
+    "ev_evac_start_city": "Miasto zaczyna się ewakuować",
+    "ev_evac_half_city": "Połowa miasta jest bezpieczna",
+    "ev_end_city": "Ewakuowano {pct:.0f}% mieszkańców",
+    "evac_title_city": "Dzięki alertowi do punktu ewakuacji dociera {relay} mieszkańców miasta",
+    "evac_sub_city": "Wszyscy mieszkańcy miasta, z aplikacją i bez (ci drudzy dowiadują się ustnie).",
+    "evac_sub_vs_city": (
+        "Wszyscy mieszkańcy miasta. Wariant bazowy nie obejmuje syren ani służb: to dolna "
+        "granica, nie prognoza."
+    ),
+    "evac_axis_city": "mieszkańcy miasta w punkcie ewakuacji",
+    "card_evac_city": "mieszkańców miasta w punkcie ewakuacji",
     "hours": "h",
     "minutes": "min",
 }
 
 _EN: dict[str, str] = {
-    "title": "Sztafeta",
+    "title": "Netless",
     "subtitle": "phone-to-phone crisis channel without a mobile network",
     "model_note": "Model output (computer simulation), not field measurements.",
     "model_tag": "model output",
@@ -283,11 +300,24 @@ _EN: dict[str, str] = {
     "leg_ring": "has just received it",
     "leg_evac": "evacuating",
     "leg_courier": "courier (rescuer)",
-    "closeup_caption": "CLOSE-UP · dashed line: phones are connecting · blue: alert handed over",
+    "closeup_caption": "CLOSE-UP · dashed line: phones are connecting · blue: the alert is being sent",
     "scale_range": "{m} m: radio range",
     "ev_evac_start": "The zone starts evacuating",
     "ev_evac_half": "Half of the zone is safe",
     "ev_end": "{pct:.0f}% of zone residents evacuated",
+    "tile_evac_city": "Residents at the evacuation point",
+    "tile_evac_value_city": "{pct:.0f}% of town residents",
+    "ev_couriers_city": "Couriers carry the alert across town",
+    "ev_evac_start_city": "The town starts evacuating",
+    "ev_evac_half_city": "Half of the town is safe",
+    "ev_end_city": "{pct:.0f}% of residents evacuated",
+    "evac_title_city": "Thanks to the alert {relay} of the town's residents reach the evacuation point",
+    "evac_sub_city": "All town residents, with and without the app (the latter learn by word of mouth).",
+    "evac_sub_vs_city": (
+        "All town residents. The baseline has no sirens or patrols: it is a lower bound, not a forecast."
+    ),
+    "evac_axis_city": "town residents at the evacuation point",
+    "card_evac_city": "of the town's residents at the evacuation point",
     "hours": "h",
     "minutes": "min",
 }
@@ -300,6 +330,16 @@ def tr(lang: str, key: str, **fmt: object) -> str:
     table = _LANGS.get(lang, _PL)
     text = table.get(key, _PL.get(key, key))
     return text.format(**fmt) if fmt else text
+
+
+def whole_city(summary: Mapping[str, object]) -> bool:
+    """Czy uruchomienie nie miało strefy zagrożenia (pole `area` w podsumowaniu; brak pola = strefa)."""
+    return summary.get("area") == "city"
+
+
+def area_key(key: str, whole_city: bool) -> str:
+    """Klucz napisu zależnego od obszaru alertu: wariant „_city”, gdy scenariusz nie ma strefy zagrożenia."""
+    return f"{key}_city" if whole_city else key
 
 
 def elapsed(lang: str, seconds: float) -> str:

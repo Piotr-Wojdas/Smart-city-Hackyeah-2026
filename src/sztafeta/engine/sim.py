@@ -46,7 +46,7 @@ from sztafeta.engine.model import (
     Verdict,
 )
 from sztafeta.engine.pczk import Pczk
-from sztafeta.engine.population import build_population
+from sztafeta.engine.population import build_population, settled_buildings
 from sztafeta.engine.rng import make_streams
 from sztafeta.engine.routing import Router
 from sztafeta.engine.templates import render_alert
@@ -89,7 +89,6 @@ class Simulation:
         self.behavior = Behavior(
             params, city, self.agents, self.mobility, self.rng.behavior, self.rng.mobility, self.events
         )
-        zone_nodes = np.flatnonzero(points_in_polygon(city.graph.node_xy, city.hazard_zone))
         pop = params.population
         self.courier_ids = np.flatnonzero(self.agents.role == int(Role.COURIER))
         self.hub_id = int(np.flatnonzero(self.agents.role == int(Role.HUB))[0])
@@ -98,7 +97,7 @@ class Simulation:
             self.mobility,
             self.rng.mobility,
             self.courier_ids,
-            zone_nodes,
+            self._patrol_nodes(),
             city.hub_xy,
             city.evac_xy,
             pop.courier_return_interval_s,
@@ -131,10 +130,23 @@ class Simulation:
         self._next_metrics_t = 0.0
         self._next_sweep_t = 0.0
 
-    def _zone_cells(self) -> tuple[str, ...]:
-        """Obszar alertu: komórki geohash (precyzja 6) pokrywające strefę zagrożenia."""
+    def _patrol_nodes(self) -> NDArray[np.int64]:
+        """Węzły ulic objeżdżane przez kurierów: w strefie zagrożenia, a bez strefy – przy budynkach miasta.
+
+        Bez strefy nie bierzemy wszystkich węzłów grafu, bo kurierzy jeździliby też po ścieżkach,
+        przy których nikt nie mieszka; z tego samego powodu pomijamy budynki, których scenariusz
+        nie zaludnia (`population.settled_share`).
+        """
         city = self.scenario.city
-        inside = points_in_polygon(city.buildings_xy, city.hazard_zone)
+        if city.has_zone:
+            return np.flatnonzero(points_in_polygon(city.graph.node_xy, city.hazard_zone))
+        lived_in = settled_buildings(city, self.params.population)
+        return np.unique(city.graph.nearest_nodes(city.buildings_xy[lived_in]))
+
+    def _zone_cells(self) -> tuple[str, ...]:
+        """Obszar alertu: komórki geohash (precyzja 6) pokrywające strefę zagrożenia albo całe miasto."""
+        city = self.scenario.city
+        inside = city.in_area(city.buildings_xy)
         pts = np.vstack([city.hazard_zone, city.buildings_xy[inside]])
         cells = {city.georef.geohash(float(x), float(y), 6) for x, y in pts}
         return tuple(sorted(cells))

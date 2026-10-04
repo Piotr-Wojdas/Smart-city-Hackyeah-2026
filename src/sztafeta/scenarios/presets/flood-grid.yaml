@@ -1,7 +1,7 @@
 # Scenariusz powodziowy na proceduralnej siatce miejskiej (bez danych OSM).
 # Mapa nie odwzorowuje żadnego rzeczywistego miasta – służy do testów i jako fallback.
 name: flood-grid
-description: Powódź w modelowym mieście na siatce proceduralnej
+description: Powódź w modelowym mieście na siatce proceduralnej – ewakuacja całego miasta
 
 map:
   kind: grid
@@ -13,6 +13,8 @@ map:
 
 scenario:
   start: "2024-09-15T06:00:00+02:00"
+  # alert i ewakuacja dotyczą całego miasta; `zone` = tylko strefy zagrożenia z mapy
+  area: city
   hub_name: "Urząd / PCZK"
   evac_name: "Szkoła – punkt ewakuacji"
   incident: "POWODZ-2024-09-15"

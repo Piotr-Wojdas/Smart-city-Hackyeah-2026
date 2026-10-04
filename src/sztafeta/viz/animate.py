@@ -1,9 +1,18 @@
-"""Animacja mapy: jedna historia od awarii sieci do ewakuacji strefy zagrożenia.
+"""Animacja mapy: jedna historia od awarii sieci do ewakuacji mieszkańców.
 
-Kolejno: pada sieć komórkowa, PCZK wydaje alert, kurierzy ruszają w teren, kamera zbliża się na
-jedno osiedle i w zwolnionym tempie pokazuje, jak telefony zestawiają połączenia i przekazują sobie
-alert, a potem widać ewakuację mieszkańców strefy. Film kończy się, gdy ewakuacja jest w zasadzie
-zakończona. Obraz płynie bez zatrzymań.
+Kolejno: pada sieć komórkowa, PCZK wydaje alert, kurierzy rozchodzą się po mieście, kamera zbliża
+się na jedno osiedle i w zwolnionym tempie pokazuje, jak telefony zestawiają połączenia i przekazują
+sobie alert, a potem widać ewakuację mieszkańców do punktu ewakuacji. Film kończy się, gdy ewakuacja
+jest w zasadzie zakończona. Obraz płynie bez zatrzymań.
+
+Zbliżenie pokazuje łańcuch trzech przekazań A -> B -> C -> D między telefonami stojącymi w miejscu.
+Każde wygląda tak samo: telefon z alertem (niebieski) i telefon bez alertu (szary) łączy przerywana
+linia, po niej od nadawcy do odbiorcy przesuwa się niebieski odcinek z „pakietem”, a gdy dotrze,
+odbiorca robi się niebieski i linia znika. Linia nigdy nie łączy dwóch telefonów, które już mają
+alert. Pozostałe telefony w kadrze są przygaszone.
+
+Gdy scenariusz ma wydzieloną strefę zagrożenia, jest ona rysowana i podpisana, a napisy mówią
+o mieszkańcach strefy; bez strefy (alert dla całego miasta) mowa jest o mieszkańcach miasta.
 
 Rysowane jest tylko to, co niesie tę historię: telefony z aplikacją (szare = bez alertu, niebieskie =
 z alertem), przekazania alertu jako linie, ewakuujący się i kurierzy. Osoby bez aplikacji, zgłoszenia
@@ -35,14 +44,13 @@ from numpy.typing import NDArray
 
 from sztafeta.io.reader import RunData, load_run
 from sztafeta.viz import style
-from sztafeta.viz.labels import elapsed, people, tr
+from sztafeta.viz.labels import area_key, elapsed, people, tr, whole_city
 
 _EVENTS = {
     "network_down",
     "alert_issued",
     "alert_received",
     "courier_dispatched",
-    "evacuation_start",
     "contact",
 }
 _STATE_EVACUATING = 3
@@ -53,15 +61,20 @@ _MAP_BOX = (0.012, 0.150, 0.672, 0.780)
 _LEGEND_BOX = (0.012, 0.058, 0.672, 0.082)
 _PANEL_BOX = (0.698, 0.0, 0.302, 1.0)
 _STORY_LINES = 8
-_END_SHARE = 0.9  # film kończy się, gdy do punktu ewakuacji dotarło 90% tych, którzy tam dotrą
+_END_SHARE = 0.98  # film kończy się, gdy do punktu ewakuacji dotarło 98% tych, którzy tam dotrą
 _END_TAIL_S = 300.0  # tyle czasu modelu film trwa jeszcze po ostatnim wpisie narracji
 _CLOSE_MIN_HALF_WIDTH_M = 75.0  # zbliżenie nie jest ciaśniejsze niż 150 m szerokości
 _CLOSE_MARGIN_M = 35.0
 _CLOSE_HANDOVERS = 3  # tyle przekazań z telefonu na telefon pokazuje zbliżenie
 _CLOSE_MAX_CHAIN_S = 90.0  # dłuższy łańcuch dałby za długie zbliżenie
-_CLOSE_LEAD_S = 3.0  # zapas przed pierwszym połączeniem
-_CLOSE_TAIL_S = 5.0  # i po ostatnim przekazaniu
-_CLOSE_STEP_S = 0.5
+_CLOSE_LEAD_S = 2.0  # zwolnione tempo zaczyna się tyle przed zestawieniem połączenia
+_CLOSE_TAIL_S = 3.0  # i trwa jeszcze tyle po odbiorze alertu
+_CLOSE_STEP_S = 0.25  # sekundy czasu modelu na klatkę w trakcie przekazania
+_CLOSE_GAP_STEP_S = 2.0  # ... i w przerwach między przekazaniami (żeby nie patrzeć na pusty kadr)
+_CLOSE_STILL_S = 10.0  # nadawca i odbiorca „stoją w miejscu”, jeśli przez tyle sekund przed przekazaniem
+_CLOSE_STILL_M = 3.0  # przesunęli się o mniej niż tyle metrów
+_CLOSE_DIM = 0.6  # o tyle bledną w zbliżeniu telefony spoza pokazywanego łańcucha
+_FOCUS_GAIN = 1.5  # o tyle większe są w zbliżeniu telefony z łańcucha
 _PACKET_TRAVEL_S = 3.0  # przez tyle sekund przed odbiorem widać „pakiet” lecący do odbiorcy
 _CLOSE_MIN_LINK_M = 12.0  # krótszych przekazań (ten sam budynek) nie byłoby widać jako linii
 _SIZE_GAIN = 3.8  # o tyle rosną znaczniki w zbliżeniu
@@ -85,6 +98,8 @@ class Closeup:
     t0: float
     t1: float
     ids: tuple[int, ...]  # indeksy przekazań (w tablicach `_got_*`), które zbliżenie rysuje
+    # okresy [od, do) pokazywane w zwolnionym tempie (przekazania); puste = całe zbliżenie
+    focus: tuple[tuple[float, float], ...] = ()
 
 
 def story_end(run: RunData) -> float:
@@ -102,11 +117,11 @@ def build_story(run: RunData, lang: str, end_t: float) -> list[tuple[float, str]
     """Kluczowe momenty historii jako (czas, napis): awaria, alert, kurierzy, sztafeta, ewakuacja."""
     story: list[tuple[float, str]] = []
     seen: set[str] = set()
+    city = whole_city(run.summary)
     first_event = {
         "network_down": "ev_network_down",
         "alert_issued": "ev_alert_issued",
-        "courier_dispatched": "ev_couriers",
-        "evacuation_start": "ev_evac_start",
+        "courier_dispatched": area_key("ev_couriers", city),
     }
     for ev in run.events:
         key = first_event.get(ev["type"])
@@ -117,11 +132,14 @@ def build_story(run: RunData, lang: str, end_t: float) -> list[tuple[float, str]
     m = run.metrics
     times = m["t"].to_numpy(dtype=float)
     reach = m["alert_reach_app"].to_numpy(dtype=float)
+    started = m["evac_started_zone"].to_numpy(dtype=float)
     evacuated = m["evacuated_zone"].to_numpy(dtype=float)
+    # „zaczyna się ewakuować” dopiero, gdy ruszyło 5% mieszkańców, a nie pierwsza osoba spod huba
     thresholds = (
         (reach, 5.0, "ev_alert_relay"),
+        (started, 5.0, area_key("ev_evac_start", city)),
         (reach, 50.0, "ev_reach_50"),
-        (evacuated, 50.0, "ev_evac_half"),
+        (evacuated, 50.0, area_key("ev_evac_half", city)),
         (reach, 90.0, "ev_reach_90"),
     )
     for series, level, key in thresholds:
@@ -133,7 +151,7 @@ def build_story(run: RunData, lang: str, end_t: float) -> list[tuple[float, str]
     story = [item for item in story if item[0] < mark]
     if times.size:
         at_mark = float(evacuated[max(int(np.searchsorted(times, mark, side="right")) - 1, 0)])
-        story.append((mark, tr(lang, "ev_end", pct=at_mark)))
+        story.append((mark, tr(lang, area_key("ev_end", city), pct=at_mark)))
     story.sort(key=lambda item: item[0])
     return story
 
@@ -144,6 +162,9 @@ def pick_chain(
     got_peer: NDArray[np.int64],
     visible: NDArray[np.bool_],
     max_duration: float = _CLOSE_MAX_CHAIN_S,
+    first: NDArray[np.bool_] | None = None,
+    seg: NDArray[np.float64] | None = None,
+    min_gap: float = 0.0,
 ) -> tuple[int, ...] | None:
     """Wybiera łańcuch trzech przekazań A -> B -> C -> D: każdy odbiorca podaje alert dalej.
 
@@ -151,6 +172,11 @@ def pick_chain(
     Bierzemy najwcześniejszy łańcuch trwający najwyżej `max_duration` (żeby zbliżenie było krótkie
     i pojawiło się na początku filmu); gdy takiego nie ma – najkrótszy. Zwraca None, gdy w przebiegu
     nie było żadnego łańcucha.
+
+    Opcjonalnie: `first` ogranicza przekazania, od których łańcuch może się zacząć, a `seg` (miejsca
+    nadawcy i odbiorcy każdego przekazania) z `min_gap` wymaga, żeby cztery telefony łańcucha leżały
+    w czterech różnych miejscach – inaczej linia do D wyglądałaby jak linia do telefonu B, który już
+    ma alert.
     """
     idx = np.flatnonzero(visible)
     by_sender: dict[int, list[int]] = {}
@@ -159,12 +185,19 @@ def pick_chain(
     best: tuple[float, float, tuple[int, ...]] | None = None
     shortest: tuple[float, float, tuple[int, ...]] | None = None
     for i in idx.tolist():
+        if first is not None and not first[i]:
+            continue
         for j in by_sender.get(int(got_agent[i]), []):
             if got_t[j] <= got_t[i]:
                 continue
             for k in by_sender.get(int(got_agent[j]), []):
                 if got_t[k] <= got_t[j]:
                     continue
+                if seg is not None:
+                    spots = np.array([seg[i, 0], seg[i, 1], seg[j, 1], seg[k, 1]])
+                    gaps = np.hypot(*(spots[:, None, :] - spots[None, :, :]).transpose(2, 0, 1))
+                    if float(gaps[np.triu_indices(4, 1)].min()) < min_gap:
+                        continue
                 duration = float(got_t[k] - got_t[i])
                 key = (float(got_t[i]), duration, (i, j, k))
                 if duration <= max_duration and (best is None or key < best):
@@ -173,6 +206,24 @@ def pick_chain(
                     shortest = key
     chosen = best if best is not None else shortest
     return None if chosen is None else chosen[2]
+
+
+def close_times(closeup: Closeup) -> list[float]:
+    """Chwile kolejnych klatek zbliżenia: zwolnione tempo w trakcie przekazań, szybsze między nimi.
+
+    Czas nigdy nie stoi. Przerwę między przekazaniami przewijamy szybciej, ale tak, żeby nie
+    przeskoczyć początku następnego. Bez okresów `focus` całe zbliżenie biegnie w zwolnionym tempie.
+    """
+    times = [closeup.t0]
+    t = closeup.t0
+    while t < closeup.t1 - 1e-9:
+        if not closeup.focus or any(a <= t < b for a, b in closeup.focus):
+            t = min(t + _CLOSE_STEP_S, closeup.t1)
+        else:
+            upcoming = min((a for a, _ in closeup.focus if a > t), default=closeup.t1)
+            t = min(t + _CLOSE_GAP_STEP_S, upcoming, closeup.t1)
+        times.append(t)
+    return times
 
 
 def storyboard(
@@ -185,7 +236,7 @@ def storyboard(
     """Plan filmu: kolejne klatki jako (czas modelu, stopień zbliżenia).
 
     Czas modelu płynie równo, `step_s` sekund na klatkę, bez zatrzymań. Jedyny wyjątek to zbliżenie:
-    sekundowy najazd kamery, zwolnione tempo (pół sekundy czasu modelu na klatkę) i sekundowy odjazd.
+    sekundowy najazd kamery, zwolnione tempo w trakcie przekazań (`close_times`) i sekundowy odjazd.
     """
     lo = 0.0 if t_from is None else t_from
     if t_end < lo or step_s <= 0.0:
@@ -200,8 +251,7 @@ def storyboard(
             zoomed = True
             # najazd i odjazd bez klatek skrajnych: nie dublują pierwszej klatki zbliżenia ani widoku miasta
             shots.extend(Shot(closeup.t0, (k + 1) / ramp) for k in range(ramp - 1))
-            n_close = round((closeup.t1 - closeup.t0) / _CLOSE_STEP_S)
-            shots.extend(Shot(closeup.t0 + k * _CLOSE_STEP_S, 1.0) for k in range(n_close + 1))
+            shots.extend(Shot(when, 1.0) for when in close_times(closeup))
             shots.extend(Shot(closeup.t1, 1.0 - (k + 1) / ramp) for k in range(ramp - 1))
             t = closeup.t1
             continue
@@ -252,6 +302,7 @@ class MapAnimation:
         self._start = datetime.fromisoformat(static["run"]["start"])
         self._metric_t = run.metrics["t"].to_numpy()
         self._range_m = float(static["map"].get("radio_range_m", 40.0))
+        self._whole_city = whole_city(run.summary)
         self.end_t = story_end(run)
         self.story = build_story(run, lang, self.end_t)
         self.outage_t = next((float(e["t"]) for e in run.events if e["type"] == "network_down"), 0.0)
@@ -281,36 +332,91 @@ class MapAnimation:
         link_m = np.hypot(recv_xy[:, 0] - send_xy[:, 0], recv_xy[:, 1] - send_xy[:, 1])
         # linia przekazania łączy miejsca z chwili przekazania: nadawca w ruchu nie „ciągnie” jej za sobą
         self._hand_seg: NDArray[np.float64] = np.stack([send_xy, recv_xy], axis=1)
-        chain = pick_chain(
-            self._got_t,
-            self._got_agent,
-            self._got_peer,
-            between_phones & (link_m >= _CLOSE_MIN_LINK_M),
+        # widoczne w zbliżeniu: między telefonami, na odległość większą niż jeden budynek, a nadawca ma
+        # alert na tyle długo, że niebieski odcinek z „pakietem” zawsze wychodzi od niebieskiego telefonu
+        had_it_s = self._got_t - self._alert_at[peer]
+        visible = between_phones & (link_m >= _CLOSE_MIN_LINK_M) & (had_it_s >= _PACKET_TRAVEL_S)
+        # najchętniej łańcuch telefonów stojących w miejscu: oba końce linii leżą wtedy na kropkach
+        # telefonów, a nadawca nie jest idącym ewakuowanym, który po chwili znika z kadru
+        earlier = np.maximum(self._got_t - _CLOSE_STILL_S, 0.0)
+        still = np.ones(self._got_t.size, dtype=np.bool_)
+        for who in (self._got_agent, peer):
+            step = self._positions_at(self._got_t, who) - self._positions_at(earlier, who)
+            still &= np.hypot(step[:, 0], step[:, 1]) < _CLOSE_STILL_M
+        # początek połączenia, którym przyszedł alert; w zbliżeniu rysujemy je przerywaną linią.
+        # Gdy go nie znamy, przyjmujemy typowy czas zestawienia.
+        self._got_start = self._got_t - 6.0
+        by_pair: dict[frozenset[int], list[int]] = {}
+        for k in np.flatnonzero(has_peer).tolist():
+            by_pair.setdefault(frozenset((int(self._got_agent[k]), int(self._got_peer[k]))), []).append(k)
+        for e in run.events:
+            if e["type"] != "contact":
+                continue
+            begin = float(e["data"]["start"])
+            for k in by_pair.get(frozenset((int(e["agent"]), int(e["peer"]))), []):
+                if begin <= self._got_t[k] <= float(e["t"]) + 1.0:
+                    self._got_start[k] = begin
+        # pierwszy telefon łańcucha powinien mieć alert, zanim zbliżenie się zacznie: inaczej widz
+        # widziałby, jak telefon robi się niebieski „znikąd”
+        ready = self._alert_at[peer] <= self._got_start - _CLOSE_LEAD_S
+        # przerywaną linię rysujemy od chwili, gdy połączenie trwa i nadawca ma już alert
+        self._link_from = np.maximum(self._got_start, self._alert_at[peer])
+
+        def as_dot(who: NDArray[np.int64], when: NDArray[np.float64]) -> NDArray[np.bool_]:
+            """Czy w danej chwili osoba jest rysowana jako kropka telefonu.
+
+            Ewakuujący się to trójkąt, a kto dotarł do punktu ewakuacji, nie jest rysowany wcale.
+            """
+            frames = np.clip(np.searchsorted(run.t, when, side="right") - 1, 0, run.t.size - 1)
+            state = run.state[frames, who]
+            shown: NDArray[np.bool_] = (state != _STATE_EVACUATING) & (state != _STATE_SAFE)
+            return shown
+
+        still &= as_dot(peer, self._link_from) & as_dot(peer, self._got_t)
+        still &= as_dot(self._got_agent, self._got_t) & as_dot(self._got_agent, self._got_t + _CLOSE_TAIL_S)
+        # historia filmu: najpierw wyjazd kurierów, potem zbliżenie na telefony
+        dispatch_t = next((float(e["t"]) for e in run.events if e["type"] == "courier_dispatched"), 0.0)
+        later = self._got_start - _CLOSE_LEAD_S >= dispatch_t
+        chain: tuple[int, ...] | None = None
+        attempts: tuple[tuple[NDArray[np.bool_], NDArray[np.bool_] | None, bool], ...] = (
+            (visible & still, ready & later, True),
+            (visible & still, later, True),
+            (visible & still, None, True),
+            (visible, None, False),
         )
+        for mask, first, apart in attempts:
+            chain = pick_chain(
+                self._got_t,
+                self._got_agent,
+                self._got_peer,
+                mask,
+                first=first,
+                seg=self._hand_seg if apart else None,
+                min_gap=_CLOSE_MIN_LINK_M,
+            )
+            if chain is not None:
+                break
 
         box_ratio = (_MAP_BOX[2] * 16.0) / (_MAP_BOX[3] * 9.0)
         self._city = _map_limits(self._view_bbox(home), box_ratio)
         self._close = self._city
-        # początek połączenia, którym przyszedł alert (nan = nieznany);
-        # w zbliżeniu rysujemy je przerywaną linią
-        self._got_start = np.full(self._got_t.size, np.nan)
         self._in_close = np.zeros(self._got_t.size, dtype=np.bool_)
+        self._focus = np.zeros(n, dtype=np.bool_)  # telefony z łańcucha pokazywanego w zbliżeniu
         self.closeup: Closeup | None = None
         if chain is not None:
             ids = np.asarray(chain, dtype=np.int64)
             self._in_close[ids] = True
-            pairs = {frozenset((int(self._got_agent[k]), int(self._got_peer[k]))): int(k) for k in ids}
-            for e in run.events:
-                if e["type"] != "contact":
-                    continue
-                k = pairs.get(frozenset((int(e["agent"]), int(e["peer"]))))
-                begin = float(e["data"]["start"]) if k is not None else 0.0
-                if k is not None and begin <= self._got_t[k] <= float(e["t"]) + 1.0:
-                    self._got_start[k] = begin
-            first = int(ids[0])
-            lead = (
-                self._got_start[first] if not np.isnan(self._got_start[first]) else self._got_t[first] - 6.0
-            )
+            self._focus[self._got_agent[ids]] = True
+            self._focus[self._got_peer[ids]] = True
+            # zwolnione tempo: od chwili tuż przed połączeniem do chwili tuż po odbiorze (okresy scalone)
+            focus: list[tuple[float, float]] = []
+            for k in ids.tolist():
+                begin = float(self._link_from[k]) - _CLOSE_LEAD_S
+                end = float(self._got_t[k]) + _CLOSE_TAIL_S
+                if focus and begin <= focus[-1][1]:
+                    focus[-1] = (focus[-1][0], max(focus[-1][1], end))
+                else:
+                    focus.append((begin, end))
             pts = self._hand_seg[ids].reshape(-1, 2)
             lo = pts.min(axis=0)
             hi = pts.max(axis=0)
@@ -323,9 +429,10 @@ class MapAnimation:
                 cx=0.5 * float(lo[0] + hi[0]),
                 cy=0.5 * float(lo[1] + hi[1]),
                 half_w=half_w,
-                t0=float(lead) - _CLOSE_LEAD_S,
-                t1=float(self._got_t[ids[-1]]) + _CLOSE_TAIL_S,
+                t0=focus[0][0],
+                t1=focus[-1][1],
                 ids=tuple(int(k) for k in ids),
+                focus=tuple(focus),
             )
             c = self.closeup
             half_h = c.half_w / box_ratio
@@ -368,18 +475,27 @@ class MapAnimation:
         ax.set_ylim(y0, y1)
         ax.set_aspect("equal")
 
-        zone = np.asarray(m["hazard_zone"], dtype=np.float64)
-        ax.add_patch(
-            Polygon(
-                zone,
-                closed=True,
-                facecolor=style.HAZARD_FILL,
-                edgecolor=style.HAZARD_EDGE,
-                linewidth=1.0,
-                alpha=0.55,
-                zorder=1,
+        self._site_labels: list[Annotation] = []
+        self._site_marks: list[PathCollection] = []  # znaczniki huba i punktu ewakuacji
+        if not self._whole_city:
+            zone = np.asarray(m["hazard_zone"], dtype=np.float64)
+            ax.add_patch(
+                Polygon(
+                    zone,
+                    closed=True,
+                    facecolor=style.HAZARD_FILL,
+                    edgecolor=style.HAZARD_EDGE,
+                    linewidth=1.0,
+                    alpha=0.55,
+                    zorder=1,
+                )
             )
-        )
+            anchor = self._zone_anchor(zone, self._city)
+            self._site_labels.append(
+                self._label(
+                    float(anchor[0]), float(anchor[1]), tr(self.lang, "zone"), style.HAZARD_EDGE, (0, 10)
+                )
+            )
         for line in m["water"]:
             pts = np.asarray(line, dtype=np.float64)
             ax.plot(
@@ -387,11 +503,6 @@ class MapAnimation:
             )
         streets = np.asarray(m["streets"], dtype=np.float64).reshape(-1, 2, 2)
         ax.add_collection(LineCollection(list(streets), colors=style.STREET_LIGHT, linewidths=1.0, zorder=2))
-
-        anchor = self._zone_anchor(zone, self._city)
-        self._site_labels: list[Annotation] = [
-            self._label(float(anchor[0]), float(anchor[1]), tr(self.lang, "zone"), style.HAZARD_EDGE, (0, 10))
-        ]
 
         self._idle_sc = self._scatter(style.PHONE_IDLE, 3)
         self._alert_sc = self._scatter(style.PHONE_ALERT, 4)
@@ -402,6 +513,9 @@ class MapAnimation:
         ax.add_collection(self._contact_lines)
         self._hand_lines = LineCollection([], linewidths=2.4, zorder=8, capstyle="round")
         ax.add_collection(self._hand_lines)
+        # telefony z łańcucha pokazywanego w zbliżeniu: nad liniami, żeby końce linii chowały się pod kropkami
+        self._focus_idle_sc = self._scatter(style.PHONE_IDLE, 8.4)
+        self._focus_alert_sc = self._scatter(style.PHONE_ALERT, 8.5)
         self._ring_sc = self._scatter(style.RING, 9)
         self._packet_sc = self._scatter(style.PACKET, 10)
 
@@ -428,8 +542,12 @@ class MapAnimation:
             bbox={"boxstyle": "round,pad=0.45", "facecolor": style.SURFACE, "edgecolor": style.AXIS},
         )
 
-        self.fig.text(_MAP_BOX[0] + 0.004, 0.948, tr(self.lang, "title"), fontsize=30, fontweight="bold")
-        self.fig.text(_MAP_BOX[0] + 0.118, 0.954, tr(self.lang, "subtitle"), fontsize=17, color=style.INK2)
+        title = self.fig.text(
+            _MAP_BOX[0] + 0.004, 0.948, tr(self.lang, "title"), fontsize=30, fontweight="bold"
+        )
+        # podtytuł zaczyna się tuż za tytułem, niezależnie od długości nazwy
+        after_title = float(title.get_window_extent().x1) / float(self.fig.bbox.width) + 0.012
+        self.fig.text(after_title, 0.954, tr(self.lang, "subtitle"), fontsize=17, color=style.INK2)
         self.fig.text(_MAP_BOX[0] + 0.004, 0.030, tr(self.lang, "model_note"), fontsize=13, color=style.INK2)
         source = textwrap.shorten(tr(self.lang, "map_note", source=m["source"]), width=150, placeholder="…")
         self.fig.text(_MAP_BOX[0] + 0.004, 0.008, source, fontsize=11, color=style.MUTED)
@@ -466,15 +584,17 @@ class MapAnimation:
     def _site(
         self, x: float, y: float, marker: style.Marker, name: str, zorder: float, offset: tuple[float, float]
     ) -> Annotation:
-        self.ax.scatter(
-            [x],
-            [y],
-            s=marker.size,
-            marker=marker.marker,
-            facecolors=marker.face,
-            edgecolors=marker.edge,
-            linewidths=marker.lw,
-            zorder=zorder,
+        self._site_marks.append(
+            self.ax.scatter(
+                [x],
+                [y],
+                s=marker.size,
+                marker=marker.marker,
+                facecolors=marker.face,
+                edgecolors=marker.edge,
+                linewidths=marker.lw,
+                zorder=zorder,
+            )
         )
         return self._label(x, y, name, style.INK, offset, leader=True)
 
@@ -544,6 +664,10 @@ class MapAnimation:
 
     # ------------------------------------------------------------------ panel
 
+    def _area(self, key: str) -> str:
+        """Klucz napisu w wariancie dla strefy zagrożenia albo dla całego miasta."""
+        return area_key(key, self._whole_city)
+
     def _build_panel(self) -> None:
         p = self.panel
         p.set_axis_off()
@@ -571,8 +695,9 @@ class MapAnimation:
         self._bars: dict[str, Rectangle] = {}
         self._values: dict[str, Text] = {}
         y = 0.795
-        for key, color in (("alert", style.BLUE), ("evac", style.AQUA)):
-            p.text(left, y, tr(lang, f"tile_{key}"), fontsize=14.5, color=style.INK2)
+        tiles = (("alert", "tile_alert", style.BLUE), ("evac", self._area("tile_evac"), style.AQUA))
+        for key, label, color in tiles:
+            p.text(left, y, tr(lang, label), fontsize=14.5, color=style.INK2)
             self._values[key] = p.text(left, y - 0.040, "", fontsize=23, fontweight="bold")
             p.add_patch(Rectangle((left, y - 0.060), 0.86, 0.010, facecolor=style.GRID, edgecolor="none"))
             bar = Rectangle((left, y - 0.060), 0.0, 0.010, facecolor=color, edgecolor="none")
@@ -591,7 +716,7 @@ class MapAnimation:
         frame = int(np.clip(np.searchsorted(run.t, t, side="right") - 1, 0, run.t.size - 1))
         xy: NDArray[np.float64] = np.column_stack([run.x[frame], run.y[frame]]).astype(np.float64)
         if frame + 1 < run.t.size:
-            # płynny ruch między snapshotami (ważne w zbliżeniu, gdzie klatka to pół sekundy)
+            # płynny ruch między snapshotami (ważne w zbliżeniu, gdzie klatka to ułamek sekundy)
             part = float((t - run.t[frame]) / (run.t[frame + 1] - run.t[frame]))
             nxt = np.column_stack([run.x[frame + 1], run.y[frame + 1]]).astype(np.float64)
             xy += (nxt - xy) * min(max(part, 0.0), 1.0)
@@ -606,49 +731,58 @@ class MapAnimation:
         safe = state == _STATE_SAFE
         at_home = self._phone & ~moving_out & ~safe
         has_alert = self._alert_at <= t
-        self._place(self._idle_sc, xy[at_home & ~has_alert], style.PHONE_IDLE, gain)
-        self._place(self._alert_sc, xy[at_home & has_alert], style.PHONE_ALERT, gain)
+        others = at_home & ~self._focus
+        chosen = at_home & self._focus
+        self._place(self._idle_sc, xy[others & ~has_alert], style.PHONE_IDLE, gain)
+        self._place(self._alert_sc, xy[others & has_alert], style.PHONE_ALERT, gain)
         self._place(self._evac_sc, xy[self._person & moving_out], style.EVACUEE, gain)
+        # w zbliżeniu telefony z łańcucha rosną, a reszta kadru blednie, żeby było widać, na co patrzeć
+        focus_gain = gain * (1.0 + (_FOCUS_GAIN - 1.0) * z)
+        self._place(self._focus_idle_sc, xy[chosen & ~has_alert], style.PHONE_IDLE, focus_gain)
+        self._place(self._focus_alert_sc, xy[chosen & has_alert], style.PHONE_ALERT, focus_gain)
+        for backdrop in (self._idle_sc, self._alert_sc, self._evac_sc):
+            backdrop.set_alpha(1.0 - _CLOSE_DIM * z)
         self._place(self._courier_sc, xy[self._courier], style.COURIER, 1.0 + 0.6 * z)
         n_safe = int((self._person & safe).sum())
         crowd = people(self.lang, n_safe)
         self._evac_label.set_text(f"{self._evac_name} · {crowd}" if n_safe else self._evac_name)
 
-        # przekazania alertu: linia nadawca -> odbiorca i pierścień u odbiorcy
         close = z > 0.5 and self.closeup is not None
         age = t - self._got_t
-        if close:
-            # w zbliżeniu rysujemy tylko wybrany łańcuch; jego linie zostają do końca
-            recent = self._in_close & (age >= 0.0)
-            fresh = recent & (age < 8.0)
-            fade = np.ones(int((recent & (self._got_peer >= 0)).sum()))
-        else:
-            keep = 90.0
-            recent = (age >= 0.0) & (age < keep)
-            fresh = (age >= 0.0) & (age < 45.0)
-            fade = 1.0 - 0.75 * (age[recent & (self._got_peer >= 0)] / keep)
-        self._place(self._ring_sc, xy[self._got_agent[fresh]], style.RING, gain)
-        shown = recent & (self._got_peer >= 0)
-        self._hand_lines.set_segments(list(self._hand_seg[shown]))
         base = to_rgba(style.BLUE)
-        self._hand_lines.set_color([(base[0], base[1], base[2], float(a)) for a in fade])
-        self._hand_lines.set_linewidth(3.0 + 1.5 * z)
-
-        # tylko w zbliżeniu: połączenie w trakcie zestawiania i „pakiet” lecący do odbiorcy tuż przed odbiorem
         if close:
-            ahead = self._got_t - t
-            linking = self._in_close & (self._got_start <= t) & (ahead > 0.0)
-            self._contact_lines.set_segments(list(self._hand_seg[linking]))
-            flying = linking & (ahead <= _PACKET_TRAVEL_S)
-            src = self._hand_seg[flying, 0]
-            dst = self._hand_seg[flying, 1]
-            done = (1.0 - ahead[flying] / _PACKET_TRAVEL_S)[:, None]
-            self._place(self._packet_sc, src + (dst - src) * done, style.PACKET, 1.0)
+            # Zbliżenie rysuje tylko wybrany łańcuch i tylko przekazania w toku: przerywana linia łączy
+            # telefon z alertem z telefonem bez alertu, a niebieski odcinek z „pakietem” przesuwa się
+            # od nadawcy do odbiorcy. Po odbiorze linia znika (zostaje pierścień u odbiorcy), więc nigdy
+            # nie łączy dwóch telefonów, które już mają alert.
+            ahead = -age
+            linking = self._in_close & (self._link_from <= t) & (ahead > 0.0)
+            src = xy[self._got_peer[linking]]
+            dst = xy[self._got_agent[linking]]
+            self._contact_lines.set_segments(list(np.stack([src, dst], axis=1)))
+            done = np.clip(1.0 - ahead[linking] / _PACKET_TRAVEL_S, 0.0, 1.0)[:, None]
+            head = src + (dst - src) * done
+            sending = done[:, 0] > 0.0
+            self._hand_lines.set_segments(list(np.stack([src[sending], head[sending]], axis=1)))
+            self._hand_lines.set_color([base] * int(sending.sum()))
+            self._place(self._packet_sc, head[sending], style.PACKET, 1.0)
+            fresh = self._in_close & (age >= 0.0) & (age < 8.0)
         else:
+            # widok miasta: linia nadawca -> odbiorca blednie przez półtorej minuty po przekazaniu
+            keep = 90.0
+            shown = (age >= 0.0) & (age < keep) & (self._got_peer >= 0)
+            fade = (1.0 - 0.75 * (age[shown] / keep)) * (1.0 - 2.0 * z)  # i gaśnie przy najeździe kamery
+            self._hand_lines.set_segments(list(self._hand_seg[shown]))
+            self._hand_lines.set_color([(base[0], base[1], base[2], float(a)) for a in fade])
             self._contact_lines.set_segments([])
             self._packet_sc.set_offsets(np.empty((0, 2)))
+            fresh = (age >= 0.0) & (age < 45.0)
+        self._hand_lines.set_linewidth(3.0 + 1.5 * z)
+        self._place(self._ring_sc, xy[self._got_agent[fresh]], style.RING, gain)
         for label in self._site_labels:
             label.set_visible(z < 0.5)
+        for mark in self._site_marks:
+            mark.set_alpha(1.0 - z)  # w zbliżeniu znaczniki miejsc nie zasłaniają telefonów i linii
         self._caption.set_alpha(z)
         bbox = self._caption.get_bbox_patch()
         if bbox is not None:
@@ -696,7 +830,7 @@ class MapAnimation:
         reach = float(row["alert_reach_app"])
         evac = float(row["evacuated_zone"])
         self._values["alert"].set_text(tr(lang, "tile_alert_value", pct=reach))
-        self._values["evac"].set_text(tr(lang, "tile_evac_value", pct=evac))
+        self._values["evac"].set_text(tr(lang, self._area("tile_evac_value"), pct=evac))
         self._bars["alert"].set_width(0.86 * reach / 100.0)
         self._bars["evac"].set_width(0.86 * evac / 100.0)
         past = [item for item in self.story if item[0] <= t][-_STORY_LINES:]
@@ -777,13 +911,15 @@ def render_animation(
 def render_frame(
     run_dir: Path, out: Path, t: float | None = None, lang: str = "pl", dpi: int = 120, closeup: bool = False
 ) -> Path:
-    """Pojedyncza klatka jako PNG: widok miasta w chwili `t` albo zbliżenie (domyślnie w jego połowie)."""
+    """Jedna klatka jako PNG: widok miasta w chwili `t` albo zbliżenie (domyślnie pierwsze przekazanie)."""
     run = load_run(run_dir, _EVENTS)
     anim = MapAnimation(run, lang=lang, dpi=dpi)
     if closeup:
         if anim.closeup is None:
             raise ValueError("W tym uruchomieniu nie ma czego pokazać w zbliżeniu (za mało przekazań alertu)")
-        when = 0.5 * (anim.closeup.t0 + anim.closeup.t1) if t is None else t
+        # domyślnie chwila, w której pierwszy alert jest w drodze do odbiorcy
+        first = float(anim._got_t[anim.closeup.ids[0]])
+        when = first - 0.4 * _PACKET_TRAVEL_S if t is None else t
         anim.draw(Shot(when, 1.0))
     else:
         anim.draw(Shot(3600.0 if t is None else t, 0.0))

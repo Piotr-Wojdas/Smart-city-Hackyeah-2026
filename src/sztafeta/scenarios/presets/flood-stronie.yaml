@@ -2,7 +2,7 @@
 # Mapa: dane OpenStreetMap z katalogu data/stronie-slaskie (polecenie `sztafeta fetch-osm`).
 # Gdy danych nie ma, używana jest proceduralna siatka z sekcji `grid` (fallback).
 name: flood-stronie
-description: Powódź w Stroniu Śląskim – awaria sieci komórkowej, ewakuacja strefy wzdłuż rzeki
+description: Powódź w Stroniu Śląskim – awaria sieci komórkowej, ewakuacja całego, gęsto zaludnionego miasta
 
 map:
   kind: osm
@@ -21,6 +21,8 @@ map:
 
 scenario:
   start: "2024-09-15T06:00:00+02:00"
+  # alert i ewakuacja dotyczą całego miasta; `zone` = tylko strefy zagrożenia z mapy
+  area: city
   hub_name: "Urząd / PCZK"
   evac_name: "Szkoła – punkt ewakuacji"
   incident: "POWODZ-2024-09-15"
@@ -33,3 +35,10 @@ scenario:
 
 params:
   duration_s: 21600
+  # Gęsto zaludnione miasto (założenia zespołu, docs/MODEL.md pkt 3 i 5). Zasady radia i routingu
+  # są takie same jak w pozostałych presetach.
+  population:
+    n_residents: 4956      # pełna liczba mieszkańców miasta wg GUS (domyślnie w modelu: 3000)
+    settled_share: 0.25    # zwarta zabudowa: ludzie mieszkają w 25% budynków o najgęstszym otoczeniu
+  behavior:
+    p_comply: 0.92         # 92% poinformowanych rusza do punktu ewakuacji (domyślnie w modelu: 85%)
